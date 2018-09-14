@@ -11,8 +11,8 @@ class LinearAccelerometer(Meter):
     REQUIRED_KEYS = set(OFFSET_KEYS).union(SLOPE_KEYS)
 
     def __init__(self, hs):
-        self.slope = 1 / array_from_tags(hs, SLOPE_KEYS)
-        self.offset = array_from_tags(hs, OFFSET_KEYS)
+        self.slope = 1 / array_from_tags(hs, SLOPE_KEYS).transpose()
+        self.offset = array_from_tags(hs, OFFSET_KEYS).transpose()
 
     def convert(self, raw_meter, temperature=None):
         return -raw_meter * self.slope - self.offset

@@ -1,6 +1,5 @@
 from unittest import TestCase
 from mat.calibration_factories import make_from_calibration_file
-from mat.calibration_factories import make_from_string
 from mat import odlfile
 from utils import (
     calibration_from_file,

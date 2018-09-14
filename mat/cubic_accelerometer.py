@@ -18,8 +18,8 @@ class CubicAccelerometer(Meter):
 
     def __init__(self, hs):
         self.gain = array_from_tags(hs, X_KEYS, Y_KEYS, Z_KEYS)
-        self.offset = array_from_tags(hs, OFFSET_KEYS)
-        self.cubic = array_from_tags(hs, CUBIC_KEYS)
+        self.offset = array_from_tags(hs, OFFSET_KEYS).transpose()
+        self.cubic = array_from_tags(hs, CUBIC_KEYS).transpose()
 
     def convert(self, raw_meter, temperature=None):
         raw_accelerometer = raw_meter / 1024.

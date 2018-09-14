@@ -15,10 +15,13 @@ from utils import (
 
 ZERO_ARRAY = array([0])
 TEMP_ARRAY = array([1])
-CUBIC_IDENTITY = array([[1, 0, 0],
-                        [0, 1, 0],
-                        [0, 0, 1]])
-CUBIC_TEMP_ARRAY = array([1, 1, 1])
+CUBIC_IDENTITY = array([[1, 2, 3],
+                        [5, 6, 7],
+                        [9, 10, 11]])
+EXAMPLE_RAW_DATA = array([[1, 2, 3, 4],
+                          [5, 6, 7, 8],
+                          [9, 10, 11, 12]])
+EXAMPLE_TEMP_ARRAY = array([1, 1, 1, 1])
 
 
 class TestConverter(TestCase):
@@ -44,40 +47,40 @@ class TestConverter(TestCase):
     def test_missing_accelerometer(self):
         assert Converter(
             calibration_from_file("v3_missing_tags.txt")).accelerometer(
-            CUBIC_IDENTITY) is None
+                EXAMPLE_RAW_DATA) is None
 
     def test_calibrated_linear_accelerometer(self):
         converter = Converter(calibration_from_file("v2_linear_acc.txt"))
         assert isinstance(converter.accelerometer_converter,
                           LinearAccelerometer)
-        assert converter.accelerometer(CUBIC_IDENTITY).shape == (3, 3)
+        assert converter.accelerometer(EXAMPLE_RAW_DATA).shape == (3, 4)
 
     def test_calibrated_cubic_accelerometer(self):
         converter = Converter(calibration_from_file("v3_calibration.txt"))
         assert isinstance(converter.accelerometer_converter,
                           CubicAccelerometer)
-        assert converter.accelerometer(CUBIC_IDENTITY).shape == (3, 3)
+        assert converter.accelerometer(EXAMPLE_RAW_DATA).shape == (3, 4)
 
     def test_missing_magnetometer(self):
         assert Converter(
             calibration_from_file("v3_missing_tags.txt")).magnetometer(
-            CUBIC_IDENTITY) is None
+            EXAMPLE_RAW_DATA) is None
 
     def test_calibrated_cubic_magnetometer(self):
         converter = Converter(calibration_from_file("v3_calibration.txt"))
         assert isinstance(converter.magnetometer_converter,
                           CubicMagnetometer)
-        assert converter.magnetometer(CUBIC_IDENTITY).shape == (3, 3)
+        assert converter.magnetometer(EXAMPLE_RAW_DATA).shape == (3, 4)
 
     def test_calibrated_temp_comp_magnetometer_with_no_temp(self):
         converter = Converter(calibration_from_file("v3_temp_comp.txt"))
         assert isinstance(converter.magnetometer_converter,
                           TempCompensatedMagnetometer)
-        assert converter.magnetometer(CUBIC_IDENTITY).shape == (3, 3)
+        assert converter.magnetometer(EXAMPLE_RAW_DATA).shape == (3, 4)
 
     def test_calibrated_temp_comp_magnetometer(self):
         converter = Converter(calibration_from_file("v3_temp_comp.txt"))
         assert isinstance(converter.magnetometer_converter,
                           TempCompensatedMagnetometer)
-        assert converter.magnetometer(CUBIC_IDENTITY,
-                                      CUBIC_TEMP_ARRAY).shape == (3, 3)
+        assert converter.magnetometer(EXAMPLE_RAW_DATA,
+                                      EXAMPLE_TEMP_ARRAY).shape == (3, 4)

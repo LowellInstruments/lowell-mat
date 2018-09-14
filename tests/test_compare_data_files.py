@@ -1,5 +1,4 @@
 from unittest import TestCase
-from mat import header, odlfile
 from tests.utils import reference_file
 from math import isclose
 
