@@ -2,25 +2,20 @@
 # Copyright (c) 2018 Lowell Instruments, LLC, some rights reserved
 
 import datetime
-import os
 import re
-from serial import (
-    Serial,
-    SerialException,
-)
-from serial.tools.list_ports import grep
 from mat.calibration_factories import calibration_from_string
 from mat.converter import Converter
-from mat.logger_cmd import LoggerCmd
 from mat.logger_info_parser import LoggerInfoParser
 from mat.sensor_parser import SensorParser
 from mat.utils import four_byte_int
+from abc import ABC, abstractmethod
 
 
 # TODO: the "command" method is in DIRE shape! Please, please fix it!
 # TODO: currently the logger class is blocking. Needs to be rewritten
 # TODO: if calibration isn't loaded, gsr crashes.
 # TODO: A default value needs to be loaded.
+
 
 FIRMWARE_VERSION_CMD = 'GFV'
 CALIBRATION_CMD = 'RHS'
@@ -42,6 +37,7 @@ STOP_WITH_STRING_CMD = 'SWS'
 SYNC_TIME_CMD = 'STM'
 TIME_CMD = 'GTM'
 
+
 SIMPLE_CMDS = [
     FIRMWARE_VERSION_CMD,
     INTERVAL_TIME_CMD,
@@ -55,100 +51,23 @@ SIMPLE_CMDS = [
 ]
 
 
-PORT_PATTERNS = {
-    'posix': r'(ttyACM0)',
-    'nt': r'^COM(\d+)',
-}
-
-
-TIMEOUT = 5
-
-
-def find_port():
-    try:
-        field = list(grep('2047:08[AEae]+'))[0][0]
-    except (TypeError, IndexError):
-        raise RuntimeError("Unable to find port")
-    pattern = PORT_PATTERNS.get(os.name)
-    if not pattern:
-        raise RuntimeError("Unsupported operating system: " + os.name)
-    return re.search(pattern, field).group(1)
-
-
-class LoggerController(object):
+class LoggerController(ABC):
     def __init__(self):
-        self.is_connected = False
-        self.__port = None
-        self.com_port = None
-        self.__callback = {}
         self.logger_info = {}
         self.calibration = None
         self.converter = None
 
-    def open_port(self, com_port=None):
-        try:
-            com_port = com_port or find_port()
-            if com_port:
-                self._open_port(com_port)
-        except SerialException:
-            self.close()
-        return self.is_connected
+    @abstractmethod
+    def open(self):
+        pass
 
-    def _open_port(self, com_port):
-        if isinstance(self.__port, Serial):
-            self.__port.close()
-        if os.name == 'posix':
-            self.__port = Serial('/dev/' + com_port)
-        else:
-            self.__port = Serial('COM' + str(com_port))
-        self.__port.timeout = TIMEOUT
-        self.is_connected = True
-        self.com_port = com_port
-
-    def command(self, *args):
-        if not self.is_connected:
-            return None
-        try:
-            return self.find_tag(self.target_tag(args))
-        except SerialException:
-            self.close()
-            return None
-
-    def find_tag(self, target):
-        if not target:
-            return
-        while True:
-            cmd = LoggerCmd(self.__port)
-            if cmd.tag == target or cmd.tag == 'ERR':
-                self.callback('rx', cmd.cmd_str())
-                return cmd.result()
-
-    def callback(self, key, cmd_str):
-        if key in self.__callback:
-            self.__callback[key](cmd_str)
-
-    def target_tag(self, args):
-        tag = args[0]
-        data = ''
-        if len(args) == 2:
-            data = str(args[1])
-        length = '%02x' % len(data)
-        if tag == 'sleep' or tag == 'RFN':
-            out_str = tag + chr(13)
-        else:
-            out_str = tag + ' ' + length + data + chr(13)
-        self.__port.reset_input_buffer()
-        self.__port.write(out_str.encode('IBM437'))
-        self.callback('tx', out_str[:-1])
-        if tag == RESET_CMD or tag == 'sleep' or tag == 'BSL':
-            return ''
-        return tag
-
+    @abstractmethod
     def close(self):
-        if self.__port:
-            self.__port.close()
-        self.is_connected = False
-        self.com_port = 0
+        pass
+
+    @abstractmethod
+    def command(self, *args):
+        pass
 
     def load_calibration(self):
         read_size = 38
@@ -167,7 +86,7 @@ class LoggerController(object):
             else:
                 break
 
-        self.calibration = calibration_from_string((cal_string))
+        self.calibration = calibration_from_string(cal_string)
         self.converter = Converter(self.calibration)
 
     def load_logger_info(self):
@@ -236,15 +155,9 @@ class LoggerController(object):
         return int(fsz) if fsz else None
 
     def sync_time(self):
-        datetimeObj = datetime.datetime.now()
-        formattedString = datetimeObj.strftime('%Y/%m/%d %H:%M:%S')
-        return self.command(SYNC_TIME_CMD, formattedString)
-
-    def set_callback(self, event, callback):
-        self.__callback[event] = callback
-
-    def __del__(self):
-        self.close()
+        date_time_obj = datetime.datetime.now()
+        formatted_string = date_time_obj.strftime('%Y/%m/%d %H:%M:%S')
+        return self.command(SYNC_TIME_CMD, formatted_string)
 
 
 def _extract_sd_kb(data):
