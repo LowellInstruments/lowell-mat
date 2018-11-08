@@ -36,6 +36,7 @@ STOP_CMD = 'STP'
 STOP_WITH_STRING_CMD = 'SWS'
 SYNC_TIME_CMD = 'STM'
 TIME_CMD = 'GTM'
+DEL_FILE_CMD = 'DEL'
 
 
 SIMPLE_CMDS = [
@@ -158,6 +159,35 @@ class LoggerController(ABC):
         date_time_obj = datetime.datetime.now()
         formatted_string = date_time_obj.strftime('%Y/%m/%d %H:%M:%S')
         return self.command(SYNC_TIME_CMD, formatted_string)
+
+    def delete_file(self, name):
+        self.command(DEL_FILE_CMD, name)
+
+    def start_deployment(self):
+        return self.command(RUN_CMD)
+
+    def stop_deployment(self):
+        return self.command(STOP_CMD)
+
+    def get_status(self):
+        return self.command(STATUS_CMD)
+
+    def get_time(self):
+        return datetime.datetime.strptime(
+            self.command(TIME_CMD)[6:], '%Y/%m/%d %H:%M:%S')
+
+    def get_serial_number(self):
+        return self.command(SERIAL_NUMBER_CMD)
+
+    def get_firmware_version(self):
+        return self.command(FIRMWARE_VERSION_CMD)
+
+    def sync_time(self):
+        self.set_time(datetime.datetime.now())
+
+    def set_time(self, when):
+        time_str = when.strftime('%Y/%m/%d %H:%M:%S')
+        self.command(SYNC_TIME_CMD, time_str)
 
 
 def _extract_sd_kb(data):

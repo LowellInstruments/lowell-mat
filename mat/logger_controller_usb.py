@@ -6,7 +6,6 @@ from serial import (
     SerialException,
 )
 from serial.tools.list_ports import grep
-from mat.logger_cmd_usb import LoggerCmdUsb
 
 
 PORT_PATTERNS = {
