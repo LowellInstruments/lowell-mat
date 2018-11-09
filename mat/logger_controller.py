@@ -182,12 +182,19 @@ class LoggerController(ABC):
     def get_firmware_version(self):
         return self.command(FIRMWARE_VERSION_CMD)
 
-    def sync_time(self):
-        self.set_time(datetime.datetime.now())
+    def check_time(self):
+        pre_time = self.get_time()
+        synced = False
+        if abs(datetime.datetime.now() - pre_time).total_seconds() > 60:
+            synced = True
+            self.sync_time()
+            post_time = self.get_time()
+        if synced:
+            rv = "\n\tTime synced from {} to {}".format(pre_time, post_time)
+        else:
+            rv = "\n\tLogger Time is {}".format(pre_time)
+        return rv
 
-    def set_time(self, when):
-        time_str = when.strftime('%Y/%m/%d %H:%M:%S')
-        self.command(SYNC_TIME_CMD, time_str)
 
 
 def _extract_sd_kb(data):

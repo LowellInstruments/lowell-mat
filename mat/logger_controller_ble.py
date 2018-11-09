@@ -2,8 +2,9 @@ import bluepy.btle as btle
 import time
 import re
 import xmodem
-import datetime
+from mat.logger_controller import LoggerController
 
+#TODO: consider putting time.sleep() in necessary commands
 
 class Delegate(btle.DefaultDelegate):
     def __init__(self):
@@ -68,9 +69,11 @@ class Delegate(btle.DefaultDelegate):
         return return_string
 
 
-class LoggerControllerBLE:
+class LoggerControllerBLE(LoggerController):
     def __init__(self, mac):
         self.peripheral = btle.Peripheral(mac)
+        # add a short delay for unknown, but required reason at RN4020
+        time.sleep(1)
         self.delegate = Delegate()
         self.peripheral.setDelegate(self.delegate)
         self.mldp_service = self.peripheral.getServiceByUUID('00035b03-58e6-07dd-021a-08123a000300')
@@ -78,6 +81,9 @@ class LoggerControllerBLE:
         cccd = self.mldp_data.valHandle + 1
         self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
         self.modem = xmodem.XMODEM(self.getc, self.putc)
+
+    def open(self):
+        pass
 
     def command(self, tag, data=None):
         # build and send the command
@@ -124,6 +130,8 @@ class LoggerControllerBLE:
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 return_val += inline
+        # time for MLDP clear string
+        time.sleep(2)
         return return_val
 
     # write in BLE characteristic
@@ -226,6 +234,11 @@ class LoggerControllerBLE:
 
     def disconnect(self):
         self.peripheral.disconnect()
+        time.sleep(2)
+        return "ok"
+
+    def close(self):
+        self.disconnect()
 
 
 class OdlwException(Exception):
