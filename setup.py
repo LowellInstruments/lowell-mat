@@ -10,7 +10,7 @@ setup(name='lowell-mat',
       author='Lowell Instruments',
       author_email='software@lowellinstruments.com',
       packages=['mat'],
-      install_requires=['numpy', 'pyserial', 'bluepy'],
+      install_requires=['numpy', 'pyserial', 'bluepy','xmodem'],
       classifiers=[
           "Development Status :: 3 - Alpha",
           "Environment :: MacOS X",
