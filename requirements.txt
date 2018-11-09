@@ -7,3 +7,4 @@ pytest-cov
 numpy
 pyserial
 bluepy
+xmodem
