@@ -56,6 +56,7 @@ class Delegate(btle.DefaultDelegate):
 
 class LoggerControllerBLE(LoggerController):
     def __init__(self, mac):
+        LoggerController.__init__(self)
         # after ble_connect, 1s delay required at RN4020
         self.peripheral = btle.Peripheral(mac)
         time.sleep(1)
@@ -66,6 +67,7 @@ class LoggerControllerBLE(LoggerController):
         cccd = self.mldp_data.valHandle + 1
         self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
         self.modem = xmodem.XMODEM(self.getc, self.putc)
+        self.modem.log.disabled = True
 
     def open(self):
         pass
@@ -117,8 +119,12 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 return_val += inline
-        # time for RN4020 to clear string
-        time.sleep(2)
+
+        # time for RN4020 to clear string, it went well
+        if return_val != "CMDAOKMLDP":
+            raise LCBLEException('RN4020 could not speed up, restarting.')
+        else:
+            time.sleep(2)
         return return_val
 
     # write in BLE characteristic, used in command() ang list_/get_files()
@@ -150,13 +156,13 @@ class LoggerControllerBLE(LoggerController):
                     raise LCBLEException("'DIR' got invalid filename.")
 
                 files.append((file_name, file_size))
-            # There was a timeout. Don't return anything
+            # timeout while 'DIR', do not return anything
             if time.time() - last_rx > 2:
                 raise LCBLEException("'DIR' got timeout while listing.")
 
         return files
 
-    # TODO: isn't this timeout excessive?
+    # getc() used by xmodem module
     def getc(self, size, timeout=5):
         last_rx = time.time()
         while time.time() - last_rx < timeout:
@@ -166,62 +172,50 @@ class LoggerControllerBLE(LoggerController):
                 in_char = self.delegate.xmodem_buffer[:size]
                 self.delegate.xmodem_buffer = self.delegate.xmodem_buffer[size:]
                 # in_char is a <bytes> here
-                temp = in_char
-                # print("-> GETC temp {}, type {} len {}".
-                # format(temp, type(temp), len(temp)))
-                print(".", end="", flush=True)
-                return temp
-        # timeout
-        print("-> *4*")
+                return in_char
+
+        # some xmodem interaction can timeout (first one always)
         return None
 
-    def xmodem_write(self, data, response=False):
-        for c in data:
-            # print("-> WRITE c {}, type {}".format(c, type(c)))
-            if not self.delegate.sentC:
-                self.mldp_data.write(chr(67).encode("utf-8"), withResponse=response)
-                self.delegate.sentC = True
-            else:
-                self.mldp_data.write(chr(c).encode("utf-8"), withResponse=response)
-
-    def putc(self, data, timeout=0):
+    def putc(self, data):
+        # give time for last getc()
         start_time = time.time()
         while time.time() - start_time < 0.1:
             self.peripheral.waitForNotifications(0.005)
-        # print("<- PUTC {}".format(data))
-        # TODO: remove xmodem_write function and put everything here
-        self.xmodem_write(data)
+
+        # send 'C', ACK, NACKs... here
+        if not self.delegate.sentC:
+            self.mldp_data.write(chr(67).encode("utf-8"), withResponse=False)
+            self.delegate.sentC = True
+        else:
+            print(".", end="", flush=True)
+            self.mldp_data.write(data, withResponse=False)
 
     def get_file(self, filename, size, outstream):
-        # build 'GET' command
+        # stage 1 of get_file() command: ascii 'GET' file name
+        self.delegate.buffer = ''
+        self.delegate.read_buffer = []
         length = '%02x' % len(filename)
         out_str = 'GET ' + length + filename + chr(13)
         self.write(out_str)
 
-        # the first 10 bytes are the answer to GET
-        self.delegate.xmodem_mode = True
+        # first 10 bytes are answer to GET, filter them
         last_rx = time.time()
-        # TODO: maybe this is futile and everything is received at recv()?
         while time.time() - last_rx < 0.5:
             self.peripheral.waitForNotifications(0.005)
 
-        # start recv() the binary file
+        # stage 2 of get_file() command: binary recv() a file
+        self.delegate.xmodem_mode = True
         self.delegate.xmodem_buffer = bytes()
         self.delegate.sentC = False
         self.modem.recv(outstream)
+        self.delegate.xmodem_mode = False
 
-        # get file size, truncate if necessary
+        # local filesystem stuff
         outstream.seek(0, 2)
         if outstream.tell() < size:
             raise XModemException("Xmodem, error: page < 1024 may be small.")
         outstream.truncate(size)
-
-        # clean up
-        # TODO: why clean here? should not be at start?
-        self.delegate.buffer = ''
-        self.delegate.xmodem_mode = False
-        print('Logger: {}, size {} Bytes downloaded ok'.format(filename, size))
-        return True
 
     def disconnect(self):
         self.peripheral.disconnect()
