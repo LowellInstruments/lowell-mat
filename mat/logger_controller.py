@@ -9,6 +9,7 @@ from mat.logger_info_parser import LoggerInfoParser
 from mat.sensor_parser import SensorParser
 from mat.utils import four_byte_int
 from abc import ABC, abstractmethod
+import time
 
 
 # TODO: the "command" method is in DIRE shape! Please, please fix it!
@@ -164,10 +165,16 @@ class LoggerController(ABC):
         self.command(DEL_FILE_CMD, name)
 
     def start_deployment(self):
-        return self.command(RUN_CMD)
+        # give time to msp430 to open SD card and create headers
+        answer = self.command(RUN_CMD)
+        time.sleep(2)
+        return answer
 
     def stop_deployment(self):
-        return self.command(STOP_CMD)
+        # give time to msp430 to close SD card
+        answer = self.command(STOP_CMD)
+        time.sleep(2)
+        return answer
 
     def get_status(self):
         return self.command(STATUS_CMD)
@@ -194,7 +201,6 @@ class LoggerController(ABC):
         else:
             rv = "\n\tLogger Time is {}".format(pre_time)
         return rv
-
 
 
 def _extract_sd_kb(data):
