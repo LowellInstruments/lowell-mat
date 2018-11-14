@@ -411,6 +411,7 @@ def _grep_patch(grep_return, name="nt"):
             with patch("mat.logger_controller_usb.os.name", name):
                 yield
 
+
 @contextmanager
 def _serial_patch(serial_class, name="nt"):
     with patch("mat.logger_controller_usb.Serial", serial_class):
