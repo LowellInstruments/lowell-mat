@@ -54,6 +54,7 @@ class Delegate(btle.DefaultDelegate):
         return self.read_buffer.pop(0)
 
 
+
 class LoggerControllerBLE(LoggerController):
     def __init__(self, mac):
         LoggerController.__init__(self)

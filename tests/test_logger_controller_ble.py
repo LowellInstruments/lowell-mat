@@ -163,6 +163,8 @@ class FakeLCBLE(LoggerController):
         pass
 
 
+
+
 @contextmanager
 def _ble_patch(ble_class):
     with patch("mat.logger_controller_ble.LoggerControllerBLE", ble_class):
