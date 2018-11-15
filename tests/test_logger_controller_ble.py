@@ -13,8 +13,9 @@ from mat.logger_controller import (
 )
 from mat.logger_controller_ble import LoggerControllerBLE
 from mat.logger_controller import LoggerController
-
 from mat.v2_calibration import V2Calibration
+import bluepy.btle as btle
+
 
 COM_PORT = "1234"
 COM_NAME = "COM" + COM_PORT
@@ -148,33 +149,74 @@ EXPECTED_SENSOR_READINGS_40_ZERO_BYTES = {
 #
 #
 
-class FakeLCBLE(LoggerController):
-    def __init__(self, mac):
-        print("--> test performed with mac {}.".format(mac))
-        pass
+# def __init__(self, mac):
+#     LoggerController.__init__(self)
+#     # after ble_connect, 1s delay required at RN4020
+#     self.peripheral = btle.Peripheral(mac)
+#     time.sleep(1)
+#     self.delegate = Delegate()
+#     self.peripheral.setDelegate(self.delegate)
+#     self.mldp_service = self.peripheral.getServiceByUUID(
+#         '00035b03-58e6-07dd-021a-08123a000300')
+#     self.mldp_data = self.mldp_service.getCharacteristics(
+#         '00035b03-58e6-07dd-021a-08123a000301')[0]
+#     cccd = self.mldp_data.valHandle + 1
+#     self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
+#     self.modem = xmodem.XMODEM(self.getc, self.putc)
+#     self.modem.log.disabled = True
+#     self.get_dots = 0
+class FakeData:
+    def __init__(self, index):
+        print("mocked data: constructor")
+        self.valHandle = index
 
-    def open(self):
-        pass
 
-    def command(self):
-        pass
+class FakeDataIndexable:
+    def __init__(self):
+        print("mocked data_indexable: constructor")
 
-    def close(self):
-        pass
+    def __getitem__(self, index):
+        return FakeData(index)
+
+
+class FakeService:
+    def __init__(self):
+        print("mocked service: constructor")
+
+    def getCharacteristics(self, charact):
+        print("mocked peripheral: getCharacteristics {}.".format(charact))
+        return FakeDataIndexable()
+
+
+class FakePeripheral:
+    def __init__(self, mac_string):
+        print("mocked peripheral: constructor {}.".format(mac_string))
+
+    def setDelegate(self, delegate_to_fxn):
+        print("mocked peripheral: setDelegate {}.".format(delegate_to_fxn))
+
+    def getServiceByUUID(self, uuid):
+        print("mocked peripheral: getServiceByUUID {}.".format(uuid))
+        return FakeService()
+
+    def writeCharacteristic(selfself, where, value):
+        print("mocked peripheral: writeCharacteristic")
+
+
 
 
 
 
 @contextmanager
-def _ble_patch(ble_class):
-    with patch("mat.logger_controller_ble.LoggerControllerBLE", ble_class):
-            yield
+def _all_patch(my_class):
+    with patch("bluepy.btle.Peripheral", my_class):
+        yield
 
 
 class TestLoggerControllerBLE(TestCase):
 
     def test_create(self):
-        with _ble_patch(FakeLCBLE):
+        with _all_patch(FakePeripheral):
             LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
 
 #
