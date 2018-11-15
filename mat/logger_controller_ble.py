@@ -19,29 +19,14 @@ class Delegate(btle.DefaultDelegate):
         # bytes as ascii for command() answers
         if not self.xmodem_mode:
             self.buffer += data.decode("utf-8")
-            # Get rid of LFs and initial CRs
-            self.buffer = self.buffer.replace(chr(10), '')
-            while chr(13) in self.buffer:
-                if self.buffer.startswith(chr(13)):
-                    self.buffer = self.buffer[1:]
-                    continue
-
-                # if there is a complete string, add it for 'in_waiting()'
-                pos = self.buffer.find(chr(13))
-                in_str = self.buffer[:pos]
-                self.buffer = self.buffer[pos+1:]
-                if in_str:
-                    self.read_buffer.append(in_str)
-
+            if self.buffer.endswith("\r\n", 2, len(self.buffer)):
+                self.buffer = self.buffer.replace("\r", "")
+                self.buffer = self.buffer.replace("\n", "")
+                self.read_buffer.append(self.buffer)
         else:
-            if not self.sentC:
-                # answer to GET command, byte as ascii after self.write('GET')
-                temp = data.decode("utf-8")
-                self.buffer += temp
-            else:
-                # bytes as bytes, for get_file() fxn
-                temp = data
-                self.xmodem_buffer += temp
+            # bytes as bytes, for get_file() fxn
+            # if len(data) == 1: print("NOTI --> {}.".format(data))
+            self.xmodem_buffer += data
 
     @property
     def in_waiting(self):
@@ -52,7 +37,6 @@ class Delegate(btle.DefaultDelegate):
         if not self.read_buffer:
             raise IndexError('Read buffer is empty')
         return self.read_buffer.pop(0)
-
 
 
 class LoggerControllerBLE(LoggerController):
@@ -165,25 +149,23 @@ class LoggerControllerBLE(LoggerController):
         return files
 
     # getc() used by xmodem module
-    def getc(self, size, timeout=5):
+    def getc(self, size, timeout=2):
         last_rx = time.time()
+        data = None
         while time.time() - last_rx < timeout:
-            if self.peripheral.waitForNotifications(0.005):
-                last_rx = time.time()
+            self.peripheral.waitForNotifications(0.005)
             if len(self.delegate.xmodem_buffer) >= size:
-                in_char = self.delegate.xmodem_buffer[:size]
+                data = self.delegate.xmodem_buffer[:size]
                 self.delegate.xmodem_buffer = self.delegate.xmodem_buffer[size:]
-                # in_char is a <bytes> here
-                return in_char
-
-        # some xmodem interaction can timeout (first one always)
-        return None
+                break
+        return data
 
     def putc(self, data):
         # give time to receive last getc()
-        start_time = time.time()
-        while time.time() - start_time < 0.1:
-            self.peripheral.waitForNotifications(0.005)
+        time.sleep(0.08)
+        # start_time = time.time()
+        # while time.time() - start_time < 0.1:
+        #     self.peripheral.waitForNotifications(0.005)
 
         # send 'C', ACK, NACKs... here
         if not self.delegate.sentC:
@@ -194,6 +176,7 @@ class LoggerControllerBLE(LoggerController):
             # aesthetics, just to know ongoing download
             self.get_dots = (self.get_dots + 1) % 50
             print("") if self.get_dots == 0 else print(".", end="", flush=True)
+        return len(data)
 
     def get_file(self, filename, size, out_stream):
         # stage 1 of get_file() command: ascii 'GET' file name
@@ -203,11 +186,16 @@ class LoggerControllerBLE(LoggerController):
         out_str = 'GET ' + length + filename + chr(13)
         self.write(out_str)
 
-        # GET answer = 10 bytes, slow to come, just filter them by now
+        # GET answer "GET 00", comes bit late!
         last_rx = time.time()
-        while time.time() - last_rx < 0.3:
-            if self.peripheral.waitForNotifications(0.005):
-                last_rx = time.time()
+        while True:
+            self.peripheral.waitForNotifications(0.005)
+            if self.delegate.in_waiting:
+                get_ans = self.delegate.read_line()
+                if get_ans == "GET 00":
+                    break
+            if time.time() - last_rx > 2:
+                raise LCBLEException("'GET' got timeout while answering.")
 
         # stage 2 of get_file() command: binary recv() a file
         self.delegate.xmodem_mode = True
