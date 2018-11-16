@@ -16,17 +16,27 @@ class Delegate(btle.DefaultDelegate):
         self.sentC = False
 
     def handleNotification(self, handler, data):
-        # bytes as ascii for command() answers
         if not self.xmodem_mode:
             self.buffer += data.decode("utf-8")
-            if self.buffer.endswith("\r\n", 2, len(self.buffer)):
-                self.buffer = self.buffer.replace("\r", "")
-                self.buffer = self.buffer.replace("\n", "")
-                self.read_buffer.append(self.buffer)
+            self.buffer = self.buffer.replace(chr(10), '')
+            while chr(13) in self.buffer:
+                if self.buffer.startswith(chr(13)):
+                    self.buffer = self.buffer[1:]
+                    continue
+
+                # if a complete string was received, add it to read_buffer
+                pos = self.buffer.find(chr(13))
+                in_str = self.buffer[:pos]
+                self.buffer = self.buffer[pos+1:]
+                if in_str:
+                    self.read_buffer.append(in_str)
+
         else:
-            # bytes as bytes, for get_file() fxn
-            # if len(data) == 1: print("NOTI --> {}.".format(data))
-            self.xmodem_buffer += data
+            if not self.sentC:
+                # answer to 'GET' command
+                self.buffer += data.decode("utf-8")
+            else:
+                self.xmodem_buffer += data
 
     @property
     def in_waiting(self):
@@ -99,7 +109,7 @@ class LoggerControllerBLE(LoggerController):
         # collect answer in 'return_val' until timeout
         last_rx = time.time()
         return_val = ''
-        while time.time() - last_rx < 2:
+        while time.time() - last_rx < 3:
             if self.peripheral.waitForNotifications(0.5):
                 last_rx = time.time()
             if self.delegate.in_waiting:
@@ -160,19 +170,14 @@ class LoggerControllerBLE(LoggerController):
                 break
         return data
 
-    def putc(self, data):
-        # give time to receive last getc()
-        time.sleep(0.06)
-
+    def putc(self, data, timeout=0):
         # send 'C', ACK, NACKs... here
         if not self.delegate.sentC:
             self.mldp_data.write(chr(67).encode("utf-8"), withResponse=False)
             self.delegate.sentC = True
         else:
             self.mldp_data.write(data, withResponse=False)
-            # aesthetics, just to know ongoing download
-            self.get_dots = (self.get_dots + 1) % 50
-            print("") if self.get_dots == 0 else print(".", end="", flush=True)
+            print(".", end="", flush=True)
         return len(data)
 
     def get_file(self, filename, size, out_stream):
@@ -183,7 +188,7 @@ class LoggerControllerBLE(LoggerController):
         out_str = 'GET ' + length + filename + chr(13)
         self.write(out_str)
 
-        # GET answer "GET 00", comes bit late!
+        # GET answer "GET 00", comes bit late! we do as in command()
         last_rx = time.time()
         while True:
             self.peripheral.waitForNotifications(0.005)
