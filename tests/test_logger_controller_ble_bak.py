@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from unittest import TestCase
 from calendar import timegm
 from time import strptime
@@ -11,11 +11,14 @@ from mat.logger_controller import (
     RESET_CMD,
     SIMPLE_CMDS,
 )
-from mat.logger_controller_ble import LoggerControllerBLE, Delegate
+from mat.logger_controller_ble import (
+    LoggerControllerBLE,
+    Delegate
+)
+
 from mat.logger_controller import LoggerController
 from mat.v2_calibration import V2Calibration
 import bluepy.btle as btle
-import mat.logger_controller_ble
 
 
 COM_PORT = "1234"
@@ -90,6 +93,66 @@ EXPECTED_SENSOR_READINGS_40_ZERO_BYTES = {
     'temp_raw': 1,
 }
 
+
+# class FakeExceptionSerial:
+#     def __init__(self, path, baud=9600):
+#         raise SerialException
+#
+#
+# class FakeSerial:
+#     close_count = 0
+#
+#     def __init__(self, path, baud=9600):
+#         self.path = path
+#         self.baud = baud
+#
+#     def close(self):
+#         FakeSerial.close_count += 1
+#         pass
+#
+#     def reset_input_buffer(self):
+#         pass
+#
+#     def write(self, *args):
+#         pass
+#
+#
+# class FakeSerialReader(FakeSerial):
+#     data = b'ERR'
+#
+#     def __init__(self, path, baud=9600):
+#         super().__init__(path, baud)
+#         self.start = 0
+#
+#     def read(self, count):
+#         end = self.start + count
+#         result = self.data[self.start:end]
+#         self.start = end
+#         return result
+#
+#
+# class FakeSerialExceptionReader(FakeSerialReader):
+#     def read(self, count):
+#         raise SerialException
+#
+#
+# class FakeSerialErr(FakeSerialReader):
+#     data = b'\n\rERR 04boom'
+#
+#
+# class FakeSerialEmpty(FakeSerialReader):
+#     data = b''
+#
+#
+# class FakeSerialForCommand(FakeSerialReader):
+#     cmds = ["ERR"]
+#
+#     def __init__(self, path, baud=9600):
+#         super().__init__(path, baud)
+#         self.data = ''.join(self.cmds).encode()
+#
+#
+
 class FakeData:
     def __init__(self, index):
         print("mocked data: constructor")
@@ -113,15 +176,6 @@ class FakeService:
         return FakeDataIndexable()
 
 
-class FakeDelegateAscii:
-
-    def __init__(self):
-        self.xmodem_mode = False
-
-    def handleNotification(self, handle, data):
-        print("mocked delegate, ascii {}".format(data))
-
-
 class FakePeripheral:
     def __init__(self, mac_string):
         print("mocked peripheral: constructor {}.".format(mac_string))
@@ -137,36 +191,48 @@ class FakePeripheral:
         print("mocked peripheral: writeCharacteristic")
 
 
+class FakeDelegateAscii:
+
+    def __init__(self):
+        self.xmodem_mode = False
+
+    def handleNotification(self, handle, data):
+        print("mocked delegate, ascii {}".format(data))
+
+
+class FakeDelegateXmodem:
+
+    def __init__(self):
+        self.xmodem_mode = True
+
+    def handleNotification(self, handle, data):
+        self.xmodem_mode = True
+        print("mocked delegate, xmodem {}".format(data))
+
+
+@contextmanager
+def _peripheral_patch(fakeperipheral_class):
+    with patch("bluepy.btle.Peripheral", fakeperipheral_class):
+        yield
+
+
 class TestLoggerControllerBLE(TestCase):
 
-    # how to patch with your stub class
-    @patch("bluepy.btle.Peripheral", FakePeripheral)
-    def test(self):
-        LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+    def test_constructor(self):
+        with _peripheral_patch(FakePeripheral):
+            assert LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
 
-    # how to patch with a mock
-    @patch("bluepy.btle.Peripheral", autospec=True)
-    def test_2(self, mymock):
-        LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
-        assert mymock.call_count == 1
-
-    # @patch("mat.logger_controller_ble.Delegate.handleNotification")
-    # def test_hn(self, mymock):
-    #     myobj = Delegate()
-    #     mymock(None, "\n\rnGET 00\r\n")
-    #     print("len -> {}.".format(len(myobj.read_buffer)))
-
-    @patch("bluepy.btle.Peripheral", FakePeripheral)
     def test_handle_notification_ascii(self):
-        obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        obj.delegate = FakeDelegateAscii()
-        obj.delegate.handleNotification(None, b'\n\rGET 00\r\n')
+        with _peripheral_patch(FakePeripheral):
+            obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+            obj.delegate = FakeDelegateAscii()
+            obj.delegate.handleNotification(None, b'\n\rGET 00\r\n')
 
-    @patch("bluepy.btle.Peripheral", FakePeripheral)
-    def test_hn(self):
-        obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        obj.delegate.handleNotification(None, "\n\rnGET 00\r\n")
-        print("len -> {}.".format(len(obj.read_buffer)))
+    def test_handle_notification_xmodem(self):
+        with _peripheral_patch(FakePeripheral):
+            obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+            obj.delegate = FakeDelegateXmodem()
+            obj.delegate.handleNotification(None, b'\x02\x01\xfe\x00')
 
 # @contextmanager
 # def _grep_patch(grep_return, name="nt"):
