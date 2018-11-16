@@ -165,7 +165,7 @@ class LoggerController(ABC):
         self.command(DEL_FILE_CMD, name)
 
     def start_deployment(self):
-        # give time to msp430 to open SD card and create headers
+        # give time to msp430 to open SD card + create headers
         answer = self.command(RUN_CMD)
         time.sleep(2)
         return answer
