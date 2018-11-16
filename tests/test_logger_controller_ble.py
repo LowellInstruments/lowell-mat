@@ -11,7 +11,11 @@ from mat.logger_controller import (
     RESET_CMD,
     SIMPLE_CMDS,
 )
-from mat.logger_controller_ble import LoggerControllerBLE
+from mat.logger_controller_ble import (
+    LoggerControllerBLE,
+    Delegate
+)
+
 from mat.logger_controller import LoggerController
 from mat.v2_calibration import V2Calibration
 import bluepy.btle as btle
@@ -149,22 +153,6 @@ EXPECTED_SENSOR_READINGS_40_ZERO_BYTES = {
 #
 #
 
-# def __init__(self, mac):
-#     LoggerController.__init__(self)
-#     # after ble_connect, 1s delay required at RN4020
-#     self.peripheral = btle.Peripheral(mac)
-#     time.sleep(1)
-#     self.delegate = Delegate()
-#     self.peripheral.setDelegate(self.delegate)
-#     self.mldp_service = self.peripheral.getServiceByUUID(
-#         '00035b03-58e6-07dd-021a-08123a000300')
-#     self.mldp_data = self.mldp_service.getCharacteristics(
-#         '00035b03-58e6-07dd-021a-08123a000301')[0]
-#     cccd = self.mldp_data.valHandle + 1
-#     self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
-#     self.modem = xmodem.XMODEM(self.getc, self.putc)
-#     self.modem.log.disabled = True
-#     self.get_dots = 0
 class FakeData:
     def __init__(self, index):
         print("mocked data: constructor")
@@ -199,26 +187,59 @@ class FakePeripheral:
         print("mocked peripheral: getServiceByUUID {}.".format(uuid))
         return FakeService()
 
-    def writeCharacteristic(selfself, where, value):
+    def writeCharacteristic(self, where, value):
         print("mocked peripheral: writeCharacteristic")
 
 
+class FakeDelegateAscii:
+
+    def __init__(self):
+        self.xmodem_mode = False
+
+    def handleNotification(self, handle, data):
+        print("mocked delegate, ascii {}".format(data))
 
 
+class FakeDelegateXmodem:
+
+    def __init__(self):
+        self.xmodem_mode = True
+
+    def handleNotification(self, handle, data):
+        self.xmodem_mode = True
+        print("mocked delegate, xmodem {}".format(data))
 
 
 @contextmanager
-def _all_patch(my_class):
-    with patch("bluepy.btle.Peripheral", my_class):
+def _peripheral_patch(fakeperipheral_class):
+    with patch("bluepy.btle.Peripheral", fakeperipheral_class):
         yield
 
 
 class TestLoggerControllerBLE(TestCase):
 
-    def test_create(self):
-        with _all_patch(FakePeripheral):
-            LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+    def test_constructor(self):
+        with _peripheral_patch(FakePeripheral):
+            assert LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
 
+    def test_handle_notification_ascii(self):
+        with _peripheral_patch(FakePeripheral):
+            obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+            obj.delegate = FakeDelegateAscii()
+            obj.delegate.handleNotification(None, b'\n\rGET 00\r\n')
+
+    def test_handle_notification_xmodem(self):
+        with _peripheral_patch(FakePeripheral):
+            obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+            obj.delegate = FakeDelegateXmodem()
+            obj.delegate.handleNotification(None, b'\x02\x01\xfe\x00')
+
+# @contextmanager
+# def _grep_patch(grep_return, name="nt"):
+#     with patch("mat.logger_controller_usb.Serial", FakeSerial):
+#         with patch("mat.logger_controller_usb.grep", return_value=grep_return):
+#             with patch("mat.logger_controller_usb.os.name", name):
+#                 yield
 #
 #     def test_open_port_on_posix(self):
 #         with _grep_patch(TTY_VALUE, name="posix"):

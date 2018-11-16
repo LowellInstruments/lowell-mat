@@ -162,10 +162,7 @@ class LoggerControllerBLE(LoggerController):
 
     def putc(self, data):
         # give time to receive last getc()
-        time.sleep(0.08)
-        # start_time = time.time()
-        # while time.time() - start_time < 0.1:
-        #     self.peripheral.waitForNotifications(0.005)
+        time.sleep(0.06)
 
         # send 'C', ACK, NACKs... here
         if not self.delegate.sentC:
