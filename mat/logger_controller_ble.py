@@ -118,7 +118,7 @@ class LoggerControllerBLE(LoggerController):
 
         # time for RN4020 to clear string, it went well
         if return_val != "CMDAOKMLDP":
-            raise LCBLEException('RN4020 did not speed up, restarting.')
+            raise LCBLEException('RN4020 did not speed up, restarting...')
         else:
             time.sleep(2)
         return return_val
