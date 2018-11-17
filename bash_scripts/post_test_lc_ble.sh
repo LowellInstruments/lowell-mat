@@ -11,9 +11,13 @@
 me=`basename "$0"`
 currentdir=`pwd`
 dfolder=`echo /home/kaz/Downloads/htmlcov`
+doesfileexist="./bash_scripts/flag_to_run"
 
 echo "Running $me..."
 echo "My current working directory is: $currentdir"
+# if test -f $doesfileexist; then
+#    echo "Do this in the future"
+# fi
 echo "Copying htmlcov folder to $dfolder..."
 cp -rf htmlcov/. $dfolder
 chown -R kaz:kaz $dfolder

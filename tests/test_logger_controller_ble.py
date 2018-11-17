@@ -139,34 +139,43 @@ class FakePeripheral:
 
 class TestLoggerControllerBLE(TestCase):
 
-    # how to patch with your stub class
+    # test constructor, patch with stub class, FakePeripheral() gets called
     @patch("bluepy.btle.Peripheral", FakePeripheral)
-    def test(self):
+    def test_lc_ble_constructor(self):
+        assert LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+
+    # test mock usage, patch with mock class, MagicMock() gets called
+    @patch("bluepy.btle.Peripheral")
+    def test_mock_usage_success(self, mymock):
         LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+        LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+        assert mymock.call_count == 2
 
-    # how to patch with a mock
-    @patch("bluepy.btle.Peripheral", autospec=True)
-    def test_2(self, mymock):
-        LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
-        assert mymock.call_count == 1
-
-    # @patch("mat.logger_controller_ble.Delegate.handleNotification")
-    # def test_hn(self, mymock):
-    #     myobj = Delegate()
-    #     mymock(None, "\n\rnGET 00\r\n")
-    #     print("len -> {}.".format(len(myobj.read_buffer)))
-
+    # test for receiving answers and results to commands()
     @patch("bluepy.btle.Peripheral", FakePeripheral)
-    def test_handle_notification_ascii(self):
-        obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        obj.delegate = FakeDelegateAscii()
-        obj.delegate.handleNotification(None, b'\n\rGET 00\r\n')
+    def test_handleNotification_ascii(self):
+        o = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+        o.delegate.xmodem_mode = False
+        o.delegate.handleNotification(None, b'\n\rany_ascii_string\r\n')
+        assert len(o.delegate.read_buffer) == 1
 
+    # test for receiving initial 'GET' answer while in xmodem format
     @patch("bluepy.btle.Peripheral", FakePeripheral)
-    def test_hn(self):
-        obj = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        obj.delegate.handleNotification(None, "\n\rnGET 00\r\n")
-        print("len -> {}.".format(len(obj.read_buffer)))
+    def test_handleNotification_xmodem_not_sentC(self):
+        o = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+        o.delegate.xmodem_mode = True
+        o.delegate.sentC = False
+        o.delegate.handleNotification(None, b'\n\rnGET 00\r\n')
+        assert o.delegate.buffer
+
+    # test for receiving file while in xmodem format
+    @patch("bluepy.btle.Peripheral", FakePeripheral)
+    def test_handleNotification_xmodem_yes_sentC(self):
+        o = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
+        o.delegate.xmodem_mode = True
+        o.delegate.sentC = True
+        o.delegate.handleNotification(None, b'\x02\x01\xfe\x00\xff')
+        assert o.delegate.xmodem_buffer
 
 # @contextmanager
 # def _grep_patch(grep_return, name="nt"):
