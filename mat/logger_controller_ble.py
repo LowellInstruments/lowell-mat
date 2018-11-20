@@ -114,7 +114,7 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 return_val += inline
-                #~ testing_added
+                #~ testing_added, helps reducing time to wait
                 if return_val == "CMDAOKMLDP":
                     time.sleep(2)
                     break

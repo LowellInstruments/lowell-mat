@@ -240,6 +240,7 @@ def _command_patch(rv_in_waiting, rv_read_line):
                     yield
 
 
+# this one provides different answers on successive calls of read_line()
 @contextmanager
 def _command_patch_dir(rv_in_waiting, rl_method):
     with patch(peripheral_class, FakePeripheral):
