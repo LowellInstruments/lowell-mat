@@ -19,7 +19,7 @@ echo "My current working directory is: $currentdir"
 #    echo "Do this in the future"
 # fi
 echo "Copying htmlcov folder to $dfolder..."
-cp -rf htmlcov/. $dfolder
+cp -rf tests/htmlcov/. $dfolder
 chown -R kaz:kaz $dfolder
 
 

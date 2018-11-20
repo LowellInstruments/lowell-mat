@@ -63,7 +63,6 @@ class LoggerControllerBLE(LoggerController):
         self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
         self.modem = xmodem.XMODEM(self.getc, self.putc)
         self.modem.log.disabled = True
-        self.get_dots = 0
 
     def open(self):
         pass
@@ -115,12 +114,14 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 return_val += inline
+                #~ testing_added
+                if return_val == "CMDAOKMLDP":
+                    time.sleep(2)
+                    break
 
         # time for RN4020 to clear string, it went well
         if return_val != "CMDAOKMLDP":
             raise LCBLEException('RN4020 did not speed up, restarting...')
-        else:
-            time.sleep(2)
         return return_val
 
     # write in BLE characteristic, used in command() ang list_/get_files()

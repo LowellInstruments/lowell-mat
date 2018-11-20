@@ -1,99 +1,36 @@
 from contextlib import contextmanager
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch, Mock
 from unittest import TestCase
-from calendar import timegm
-from time import strptime
-from numpy import array
-from numpy.testing import assert_array_almost_equal
-from serial import SerialException
-from mat.converter import Converter
-from mat.logger_controller import (
-    RESET_CMD,
-    SIMPLE_CMDS,
+from mat.logger_controller_ble import (
+    LoggerControllerBLE,
+    Delegate,
+    LCBLEException
 )
-from mat.logger_controller_ble import LoggerControllerBLE, Delegate
-from mat.logger_controller import LoggerController
-from mat.v2_calibration import V2Calibration
-import bluepy.btle as btle
-import mat.logger_controller_ble
 
 
-COM_PORT = "1234"
-COM_NAME = "COM" + COM_PORT
-COM_VALUE = [[COM_NAME]]
-SERIAL_NUMBER = "123456789"
-TTY_NAME = "ttyACM0"
-TTY_VALUE = [[TTY_NAME]]
-TIME_FORMAT = "%Y/%m/%d %H:%M:%S"
-TIME_STAMP = "2018/09/18 14:36:00"
-EXPECTED_SENSOR_READINGS_32_BYTES = {
-    'ax': array([-4.26757812]),
-    'ax_raw': array([-4370]),
-    'ay': array([-4.26757812]),
-    'ay_raw': array([-4370]),
-    'az': array([-4.26757812]),
-    'az_raw': array([-4370]),
-    'batt': array([-4.37]),
-    'light': 0,
-    'light_raw': 0,
-    'mx': array([-4370.]),
-    'mx_raw': array([-4370]),
-    'my': array([-4370.]),
-    'my_raw': array([-4370]),
-    'mz': array([-4370.]),
-    'mz_raw': array([-4370]),
-    'pressure': 0,
-    'pressure_raw': 0,
-    'temp': -26.170648093957993,
-    'temp_raw': 61166,
-}
-EXPECTED_SENSOR_READINGS_40_BYTES = {
-    'ax': array([-4.26757812]),
-    'ax_raw': -4370,
-    'ay': array([-4.26757812]),
-    'ay_raw': -4370,
-    'az': array([-4.26757812]),
-    'az_raw': -4370,
-    'batt': -4.37,
-    'light': array([206.68945312]),
-    'light_raw': -4370,
-    'mx': array([-4370.]),
-    'mx_raw': -4370,
-    'my': array([-4370.]),
-    'my_raw': -4370,
-    'mz': array([-4370.]),
-    'mz_raw': -4370,
-    'pressure': array([100.8656]),
-    'pressure_raw': 61166,
-    'temp': array([-26.17064809]),
-    'temp_raw': 61166,
-}
-EXPECTED_SENSOR_READINGS_40_ZERO_BYTES = {
-    'ax': array([0.]),
-    'ax_raw': array([0]),
-    'ay': array([0.]),
-    'ay_raw': array([0]),
-    'az': array([0.]),
-    'az_raw': array([0]),
-    'batt': array([0.]),
-    'light': array([100.]),
-    'light_raw': 0,
-    'mx': array([0.]),
-    'mx_raw': array([0]),
-    'my': array([0.]),
-    'my_raw': array([0]),
-    'mz': array([0.]),
-    'mz_raw': array([0]),
-    'pressure': 3.0,
-    'pressure_raw': 0,
-    'temp': 1194.0891079879839,
-    'temp_raw': 1,
-}
+class FakeOutStream():
+    def seek(self, a, b):
+        pass
+
+    def tell(self):
+        return 12345
+
+    def truncate(self, size):
+        pass
+
+
+class FakeOutStreamTellWentWrong():
+    def tell(self):
+        return 0
+
 
 class FakeData:
     def __init__(self, index):
         print("mocked data: constructor")
         self.valHandle = index
+
+    def write(self, data, withResponse=False):
+        print("mocked data: write")
 
 
 class FakeDataIndexable:
@@ -122,7 +59,7 @@ class FakeDelegateAscii:
         print("mocked delegate, ascii {}".format(data))
 
 
-class FakePeripheral:
+class FakePeripheral():
     def __init__(self, mac_string):
         print("mocked peripheral: constructor {}.".format(mac_string))
 
@@ -136,6 +73,16 @@ class FakePeripheral:
     def writeCharacteristic(self, where, value):
         print("mocked peripheral: writeCharacteristic")
 
+    def waitForNotifications(self, value):
+        print("mocked peripheral: waitForNotifications")
+        return True
+
+
+class FakePeripheralCmdTimeout(FakePeripheral):
+    def waitForNotifications(self, value):
+        print("mocked peripheraltimeout: waitForNotifications")
+        return False
+
 
 class TestLoggerControllerBLE(TestCase):
 
@@ -146,323 +93,174 @@ class TestLoggerControllerBLE(TestCase):
 
     # test mock usage, patch with mock class, MagicMock() gets called
     @patch("bluepy.btle.Peripheral")
-    def test_mock_usage_success(self, mymock):
+    def test_mock_usage_success(self, my_mock):
         LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
         LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        assert mymock.call_count == 2
+        assert my_mock.call_count == 2
 
     # test for receiving answers and results to commands()
-    @patch("bluepy.btle.Peripheral", FakePeripheral)
     def test_handleNotification_ascii(self):
-        o = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        o.delegate.xmodem_mode = False
-        o.delegate.handleNotification(None, b'\n\rany_ascii_string\r\n')
-        assert len(o.delegate.read_buffer) == 1
+        d = Delegate()
+        d.xmodem_mode = False
+        d.handleNotification(None, b'\n\rany_ascii_string\r\n')
+        assert len(d.read_buffer) == 1
 
     # test for receiving initial 'GET' answer while in xmodem format
-    @patch("bluepy.btle.Peripheral", FakePeripheral)
     def test_handleNotification_xmodem_not_sentC(self):
-        o = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        o.delegate.xmodem_mode = True
-        o.delegate.sentC = False
-        o.delegate.handleNotification(None, b'\n\rnGET 00\r\n')
-        assert o.delegate.buffer
+        d = Delegate()
+        d.xmodem_mode = True
+        d.sentC = False
+        d.handleNotification(None, b'\n\rnGET 00\r\n')
+        assert d.buffer
 
     # test for receiving file while in xmodem format
-    @patch("bluepy.btle.Peripheral", FakePeripheral)
     def test_handleNotification_xmodem_yes_sentC(self):
-        o = LoggerControllerBLE("aa:bb:cc:dd:ee:ff")
-        o.delegate.xmodem_mode = True
-        o.delegate.sentC = True
-        o.delegate.handleNotification(None, b'\x02\x01\xfe\x00\xff')
-        assert o.delegate.xmodem_buffer
+        d = Delegate()
+        d.xmodem_mode = True
+        d.sentC = True
+        d.handleNotification(None, b'\x02\x01\xfe\x00\xff')
+        assert d.xmodem_buffer
 
-# @contextmanager
-# def _grep_patch(grep_return, name="nt"):
-#     with patch("mat.logger_controller_usb.Serial", FakeSerial):
-#         with patch("mat.logger_controller_usb.grep", return_value=grep_return):
-#             with patch("mat.logger_controller_usb.os.name", name):
-#                 yield
-#
-#     def test_open_port_on_posix(self):
-#         with _grep_patch(TTY_VALUE, name="posix"):
-#             _open_controller()
-#
-#     def test_open_port_on_nt(self):
-#         with _grep_patch(COM_VALUE, name="nt"):
-#             _open_controller()
-#
-#     def test_open_port_with_empty_grep(self):
-#         with _grep_patch(None, name="posix"):
-#             with self.assertRaises(RuntimeError):
-#                 _open_controller()
-#
-#     def test_open_port_on_unknown(self):
-#         with _grep_patch(COM_VALUE, name="unknown"):
-#             with self.assertRaises(RuntimeError):
-#                 _open_controller()
-#
-#     def test_open_port_twice(self):
-#         with _serial_patch(FakeSerial):
-#             controller = _open_controller(com_port="1")
-#             close_count = FakeSerial.close_count
-#             assert controller.open_port(com_port="1")
-#             assert FakeSerial.close_count > close_count
-#
-#     def test_open_port_exception(self):
-#         with _serial_patch(FakeExceptionSerial):
-#             _open_controller(com_port="1", expectation=False)
-#
-#     def test_empty_command(self):
-#         with _serial_patch(FakeSerial):
-#             controller = _open_controller(com_port="1")
-#             with self.assertRaises(IndexError):
-#                 controller.command()
-#
-#     def test_simple_command_port_closed(self):
-#         controller = LoggerControllerUSB()
-#         assert controller.command("SIT") is None
-#
-#     def test_command_with_data_port_closed(self):
-#         controller = LoggerControllerUSB()
-#         assert controller.command("WAIT", "1") is None
-#
-#     def test_sleep_command(self):
-#         with _serial_patch(FakeSerial):
-#             assert _command("sleep") is None
-#
-#     def test_sit_command(self):
-#         with _command_patch("SIT 04down"):
-#             assert _command("SIT") == "down"
-#
-#     def test_short_command2(self):
-#         with _command_patch("SIT 04dow"):
-#             controller = _open_controller(com_port="1")
-#             with self.assertRaises(RuntimeError):
-#                 controller.command("SIT")
-#
-#     def test_sit_command_with_callbacks(self):
-#         with _command_patch("SIT 04down"):
-#             assert self.command_with_callbacks() == "down"
-#
-#     def test_sit_command_with_bad_length(self):
-#         with _command_patch("SIT down"):
-#             controller = _open_controller(com_port="1")
-#             with self.assertRaises(RuntimeError):
-#                 controller.command("SIT")
-#
-#     def test_err_command_with_callbacks(self):
-#         with _serial_patch(FakeSerialErr):
-#             assert self.command_with_callbacks() is None
-#
-#     def command_with_callbacks(self):
-#         controller = LoggerControllerUSB()
-#         controller.set_callback("tx", _do_nothing)
-#         controller.set_callback("rx", _do_nothing)
-#         assert controller.open_port(com_port="1")
-#         return controller.command("SIT")
-#
-#     def test_exception_command(self):
-#         with _serial_patch(FakeSerialExceptionReader):
-#             assert _open_controller(com_port="1").command("SIT") is None
-#
-#     def exception_command(self):
-#         assert _open_controller(com_port="1").command("SIT") is None
-#
-#     def test_load_calibration(self):
-#         with _command_patch("RHS 04down" * 10):
-#             self.load_calibration()
-#
-#     def test_load_calibration_empty(self):  # For coverage
-#         with _command_patch("RHS 00" * 10):
-#             _open_controller(com_port="1")
-#             self.load_calibration()
-#
-#     def load_calibration(self):
-#         controller = _open_controller(com_port="1")
-#         assert controller.calibration is None
-#         assert controller.load_calibration() is None
-#         assert isinstance(controller.calibration, V2Calibration)
-#         assert isinstance(controller.converter, Converter)
-#         return controller
-#
-#     def test_load_logger_info_bad(self):
-#         with _command_patch("RLI 03bad" * 3):
-#             controller = _open_controller(com_port="1")
-#             assert len(controller.logger_info) == 0
-#             assert controller.load_logger_info() is None
-#             assert controller.logger_info['error'] is True
-#
-#     def test_load_logger_ca_info(self):
-#         with _command_patch("RLI 09CA\x04FFFF##" * 3):
-#             controller = _open_controller(com_port="1")
-#             assert len(controller.logger_info) == 0
-#             assert controller.load_logger_info() is None
-#             assert controller.logger_info["CA"] != 0
-#
-#     def test_load_logger_ba_info(self):
-#         with _command_patch("RLI 09BA\x04FFFF##" * 3):
-#             controller = _open_controller(com_port="1")
-#             assert len(controller.logger_info) == 0
-#             assert controller.load_logger_info() is None
-#             assert controller.logger_info["BA"] != 0
-#
-#     def test_load_logger_ba_info_short(self):
-#         with _command_patch("RLI 07BA\x02FF##" * 3):
-#             controller = _open_controller(com_port="1")
-#             assert len(controller.logger_info) == 0
-#             assert controller.load_logger_info() is None
-#             assert controller.logger_info["BA"] == 0
-#
-#     def test_get_timestamp(self):
-#         with _command_patch("GTM 13" + TIME_STAMP):
-#             expectation = timegm(strptime(TIME_STAMP, TIME_FORMAT))
-#             assert (_open_controller(com_port="1").get_timestamp() ==
-#                     expectation)
-#
-#     def test_get_empty_logger_settings(self):
-#         with _command_patch("GLS 00"):
-#             assert _open_controller(com_port="1").get_logger_settings() == {}
-#
-#     def test_get_logger_settings_on(self):
-#         with _command_patch("GLS 1e" + "01" * 15):
-#             settings = _open_controller(com_port="1").get_logger_settings()
-#             assert settings['ACL'] is True
-#             assert settings['BMN'] == 257
-#
-#     def test_get_logger_settings_off(self):
-#         with _command_patch("GLS 1e" + "00" * 15):
-#             settings = _open_controller(com_port="1").get_logger_settings()
-#             assert settings['ACL'] is False
-#             assert settings['BMN'] == 0
-#
-#     def test_reset(self):
-#         with _command_patch(RESET_CMD):
-#             assert _open_controller(com_port="1").command(RESET_CMD) is None
-#
-#     def test_commands_that_return_empty_string(self):
-#         for cmd in SIMPLE_CMDS:
-#             with _command_patch(cmd + " 00"):
-#                 assert _open_controller(com_port="1").command(cmd) == ""
-#
-#     def test_cmd_with_no_data(self):
-#         with _serial_patch(FakeSerialEmpty):
-#             with self.assertRaises(RuntimeError):
-#                 _open_controller(com_port="1").command(SIMPLE_CMDS[0])
-#
-#     def test_stop_with_string(self):
-#         with _command_patch("SWS 00"):
-#             assert _open_controller(com_port="1").stop_with_string("") == ""
-#
-#     def test_get_sensor_readings_closed_port(self):
-#         with _command_patch("GSR 00" + "RHS 00" * 10):
-#             controller = _open_controller(com_port="1")
-#             controller.close()
-#             with self.assertRaises(RuntimeError):
-#                 controller.get_sensor_readings()
-#
-#     def test_get_sensor_readings_empty(self):
-#         with _command_patch("GSR 00" + "RHS 00" * 10):
-#             assert _open_controller(com_port="1").get_sensor_readings() is None
-#
-#     def test_get_sensor_readings_32_bytes(self):
-#         # Note: "F" causes a ZeroDivisionError
-#         readings = self.get_sensor_readings(32, "E")
-#         [assert_array_almost_equal(EXPECTED_SENSOR_READINGS_32_BYTES[key],
-#                                    readings[key])
-#          for key in EXPECTED_SENSOR_READINGS_32_BYTES.keys()]
-#
-#     def test_get_sensor_readings_40_bytes(self):
-#         readings = self.get_sensor_readings(40, "E")
-#         [assert_array_almost_equal(EXPECTED_SENSOR_READINGS_40_BYTES[key],
-#                                    readings[key])
-#          for key in EXPECTED_SENSOR_READINGS_40_BYTES.keys()]
-#
-#     def test_get_sensor_readings_40_zero_bytes(self):
-#         readings = self.get_sensor_readings(40, "0")
-#         [assert_array_almost_equal(EXPECTED_SENSOR_READINGS_40_ZERO_BYTES[key],
-#                                    readings[key])
-#          for key in EXPECTED_SENSOR_READINGS_40_ZERO_BYTES.keys()]
-#
-#     def get_sensor_readings(self, bytes, value):
-#         controller = None
-#         with _command_patch(["RHS 00",
-#                              "GSR %02s%s" % (hex(bytes)[2:], value * bytes)]):
-#             controller = self.load_calibration()
-#             return controller.get_sensor_readings()
-#
-#     def test_get_sd_capacity_empty(self):
-#         with _command_patch("CTS 00"):
-#             assert _open_controller(com_port="1").get_sd_capacity() is None
-#
-#     def test_get_sd_capacity(self):
-#         capacity = 128
-#         with _command_patch("CTS 05%dKB" % capacity):
-#             assert _open_controller(com_port="1").get_sd_capacity() == capacity
-#
-#     def test_get_sd_capacity_bad_data(self):
-#         with _command_patch("CTS 02XY"):
-#             assert _open_controller(com_port="1").get_sd_capacity() is None
-#
-#     def test_get_sd_free_space_empty(self):
-#         with _command_patch("CFS 00"):
-#             assert _open_controller(com_port="1").get_sd_free_space() is None
-#
-#     def test_get_sd_free_space(self):
-#         free_space = 128
-#         with _command_patch("CFS 05%dKB" % free_space):
-#             assert (_open_controller(com_port="1").get_sd_free_space() ==
-#                     free_space)
-#
-#     def test_get_sd_free_space_bad_data(self):
-#         with _command_patch("CFS 02XY"):
-#             assert _open_controller(com_port="1").get_sd_free_space() is None
-#
-#     def test_get_sd_file_size(self):
-#         size = 128
-#         with _command_patch("FSZ 03%d" % size):
-#             assert _open_controller(com_port="1").get_sd_file_size() == size
-#
-#     def test_get_sd_file_size_empty(self):
-#         with _command_patch("FSZ 00"):
-#             assert _open_controller(com_port="1").get_sd_file_size() is None
-#
-#     def test_sync_time(self):
-#         with _command_patch("STM 00"):
-#             assert _open_controller(com_port="1").sync_time() == ""
-#
-#
-# # def _check_ports(port):
-# #     controller = LoggerControllerUSB()
-# #     assert controller.check_ports() == [port]
-#
-#
+    # test for parsing while in ascii mode
+    def test_read_line_no_read_buffer(self):
+        self.assertRaises(IndexError, Delegate().read_line)
 
-#
-#
-# @contextmanager
-# def _command_patch(cmds, name="nt"):
-#     if not isinstance(cmds, list):
-#         cmds = [cmds]
-#     with _serial_patch(fake_for_command(cmds), name):
-#         yield
-#
-#
-# def fake_for_command(cmds):
-#     # create a new type object
-#     return type("FakeSerial", (FakeSerialForCommand,), {"cmds": cmds})
-#
-#
-# def _open_controller(com_port=None, expectation=True):
-#     controller = LoggerControllerUSB()
-#     assert bool(controller.open_port(com_port=com_port)) is expectation
-#     return controller
-#
-#
-# def _command(cmd):
-#     controller = _open_controller(com_port="1")
-#     return controller.command(cmd)
-#
-#
-# def _do_nothing(*args):
-#     pass
+    # test for parsing while in ascii mode
+    def test_read_line_read_buffer(self):
+        d = Delegate()
+        d.handleNotification(None, b'\n\rany_ascii_string\r\n')
+        assert "".join(d.read_line()) == "any_ascii_string"
+
+    # test for open method
+    @patch("bluepy.btle.Peripheral")
+    def test_open(self, my_mock):
+        LoggerControllerBLE("ff:ff:ff:ff:ff:ff").open()
+        pass
+
+    # test for a command which requires no answer
+    def test_command_no_answer_required(self):
+        with _command_patch(None, ""):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            assert lc_ble.command("sleep", None) is None
+
+    # test for a command which requires answer but timeouts
+    def test_command_timeout(self):
+        with _command_patch_timeout():
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            self.assertRaises(LCBLEException, lc_ble.command, "STS", None)
+
+    # test for a command which performs perfectly
+    def test_command_answer_ok(self):
+        with _command_patch(True, "STS"):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            assert lc_ble.command("STS") is "STS"
+
+    # test for exception when logger answering "INV" to a command
+    def test_command_answer_inv(self):
+        with _command_patch(True, "INV"):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            self.assertRaises(LCBLEException, lc_ble.command, "STS")
+
+    # test for exception when logger answering "ERR" to a command
+    def test_command_answer_err(self):
+        with _command_patch(True, "ERR"):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            self.assertRaises(LCBLEException, lc_ble.command, "STS")
+
+    # test for a control_command to RN4020 which requires answer but timeouts
+    def test_control_command_timeout(self):
+        with _command_patch_timeout():
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            self.assertRaises(LCBLEException, lc_ble.control_command, "data_X")
+
+    # test for a control_command to RN4020 which performs perfectly
+    def test_control_command_answer_ok(self):
+        with _command_patch(True, "CMDAOKMLDP"):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            assert lc_ble.control_command("data_X") is "CMDAOKMLDP"
+
+    # test for writing characteristics, used by command()
+    def test_write(self):
+        with _peripheral_patch():
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            lc_ble.write("hello")
+
+    # test for the special command "DIR" when logger answers wrongly
+    def test_list_files_answer_wrong(self):
+        with _command_patch(True, "file_with_no_size.fil"):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            self.assertRaises(LCBLEException, lc_ble.list_files)
+
+    # test for command "DIR" when logger answers timeouts
+    def test_list_files_answer_timeout(self):
+        with _command_patch_timeout():
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            self.assertRaises(LCBLEException, lc_ble.list_files)
+
+    # test for command "DIR" when logger answers perfectly but empty list
+    def test_list_files_answer_empty(self):
+        with _command_patch(True, "\x04"):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            lc_ble.list_files()
+
+    # test for command "DIR" when logger answers a populated file list
+    def test_list_files_answer_ok(self):
+        rl_answers = Mock(side_effect=["one.h\t12", "two.dat\t2345", "\x04"])
+        with _command_patch_dir(True, rl_answers):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            lc_ble.list_files()
+
+    # test for command "GET" when logger sends a file correctly
+    def test_get_files_answer_ok(self):
+        with _command_patch_get(True, "GET 00"):
+            lc_ble = LoggerControllerBLE("ff:ff:ff:ff:ff:ff")
+            lc_ble.get_file("which_file", 12345, FakeOutStream())
+
+
+# vars useful for context managers
+peripheral_class = "bluepy.btle.Peripheral"
+lc_ble_write_method = "mat.logger_controller_ble.LoggerControllerBLE.write"
+d_in_waiting_property = "mat.logger_controller_ble.Delegate.in_waiting"
+d_read_line_method = "mat.logger_controller_ble.Delegate.read_line"
+xmodem_recv_method = "xmodem.XMODEM.recv"
+
+
+@contextmanager
+def _peripheral_patch():
+    with patch(peripheral_class, FakePeripheral):
+        yield
+
+
+@contextmanager
+def _command_patch(rv_in_waiting, rv_read_line):
+    with patch(peripheral_class, FakePeripheral):
+        with patch(lc_ble_write_method):
+            with patch(d_in_waiting_property, return_value=rv_in_waiting):
+                with patch(d_read_line_method, return_value=rv_read_line):
+                    yield
+
+
+@contextmanager
+def _command_patch_dir(rv_in_waiting, rl_method):
+    with patch(peripheral_class, FakePeripheral):
+        with patch(lc_ble_write_method):
+            with patch(d_in_waiting_property, return_value=rv_in_waiting):
+                with patch(d_read_line_method, rl_method):
+                    yield
+
+
+@contextmanager
+def _command_patch_get(rv_in_waiting, rv_read_line):
+    with patch(peripheral_class, FakePeripheral):
+        with patch(lc_ble_write_method):
+            with patch(d_in_waiting_property, return_value=rv_in_waiting):
+                with patch(d_read_line_method, return_value=rv_read_line):
+                    with patch(xmodem_recv_method):
+                        yield
+
+
+@contextmanager
+def _command_patch_timeout():
+    with patch(peripheral_class, FakePeripheralCmdTimeout):
+        with patch(lc_ble_write_method):
+            yield
