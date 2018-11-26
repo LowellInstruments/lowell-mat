@@ -57,8 +57,10 @@ class LoggerControllerBLE(LoggerController):
         time.sleep(1)
         self.delegate = Delegate()
         self.peripheral.setDelegate(self.delegate)
-        self.mldp_service = self.peripheral.getServiceByUUID('00035b03-58e6-07dd-021a-08123a000300')
-        self.mldp_data = self.mldp_service.getCharacteristics('00035b03-58e6-07dd-021a-08123a000301')[0]
+        uuid_serv = '00035b03-58e6-07dd-021a-08123a000300'
+        uuid_char = '00035b03-58e6-07dd-021a-08123a000301'
+        self.mldp_service = self.peripheral.getServiceByUUID(uuid_serv)
+        self.mldp_data = self.mldp_service.getCharacteristics(uuid_char)[0]
         cccd = self.mldp_data.valHandle + 1
         self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
         self.modem = xmodem.XMODEM(self.getc, self.putc)
@@ -114,7 +116,6 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 return_val += inline
-                #~ testing_added, helps reducing time to wait
                 if return_val == "CMDAOKMLDP":
                     time.sleep(2)
                     break
@@ -171,7 +172,7 @@ class LoggerControllerBLE(LoggerController):
                 break
         return data
 
-    def putc(self, data, timeout=0):
+    def putc(self, data):
         # send 'C', ACK, NACKs... here
         if not self.delegate.sentC:
             self.mldp_data.write(chr(67).encode("utf-8"), withResponse=False)

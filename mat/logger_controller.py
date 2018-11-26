@@ -199,7 +199,7 @@ class LoggerController(ABC):
         if synced:
             rv = "\n\tTime synced from {} to {}".format(pre_time, post_time)
         else:
-            rv = "\n\tLogger Time is {}".format(pre_time)
+            rv = "{}".format(pre_time)
         return rv
 
 
