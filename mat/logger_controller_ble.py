@@ -161,7 +161,7 @@ class LoggerControllerBLE(LoggerController):
         return files
 
     # getc() used by xmodem module
-    def getc(self, size, timeout=2):
+    def getc(self, size, timeout=3):
         last_rx = time.time()
         data = None
         while time.time() - last_rx < timeout:
@@ -172,15 +172,33 @@ class LoggerControllerBLE(LoggerController):
                 break
         return data
 
-    def putc(self, data):
-        # send 'C', ACK, NACKs... here
-        if not self.delegate.sentC:
-            self.mldp_data.write(chr(67).encode("utf-8"), withResponse=False)
-            self.delegate.sentC = True
-        else:
-            self.mldp_data.write(data, withResponse=False)
-            print(".", end="", flush=True)
-        return len(data)
+    # def putc(self, data, timeout=3):
+    #     # send 'C', ACK, NACKs... here
+    #     if not self.delegate.sentC:
+    #         self.mldp_data.write(chr(67).encode("utf-8"), withResponse=False)
+    #         self.delegate.sentC = True
+    #     else:
+    #         self.mldp_data.write(data, withResponse=False)
+    #         print(".", end="", flush=True)
+    #     return len(data)
+
+    def putc(self, data, timeout=3):
+        last_tx = time.time()
+        response_ok = False
+        while time.time() - last_tx < timeout:
+            if not self.delegate.sentC:
+                if self.mldp_data.write(chr(67).encode("utf-8"), withResponse=True):
+                    self.delegate.sentC = True
+                    response_ok = True
+                    break
+            else:
+                if self.mldp_data.write(data, withResponse=True):
+                    print(".", end="", flush=True)
+                    response_ok = True
+                    break
+        if response_ok:
+            return len(data)
+        return None
 
     def get_file(self, filename, size, out_stream):
         # stage 1 of get_file() command: ascii 'GET' file name
