@@ -33,7 +33,7 @@ class Delegate(btle.DefaultDelegate):
 
         else:
             if not self.sentC:
-                # answer to 'GET' command
+                # ascii tag_answer to 'GET' command
                 self.buffer += data.decode("utf-8")
             else:
                 self.xmodem_buffer += data
@@ -65,6 +65,7 @@ class LoggerControllerBLE(LoggerController):
         self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
         self.modem = xmodem.XMODEM(self.getc, self.putc)
         self.modem.log.disabled = True
+        self.fw_version = ""
 
     def open(self):
         pass
@@ -107,6 +108,10 @@ class LoggerControllerBLE(LoggerController):
         self.delegate.read_buffer = []
         self.write('BTC 00' + data + chr(13))
 
+        # check fw_version to control different behaviors
+        if self.fw_version == "":
+            raise LCBLEException('Need fw_version() prior control_command().')
+
         # collect answer in 'return_val' until timeout
         last_rx = time.time()
         return_val = ''
@@ -116,22 +121,25 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 return_val += inline
+                # time for RN4020 to clear string, it went well
                 if return_val == "CMDAOKMLDP":
                     time.sleep(2)
                     break
 
-        # time for RN4020 to clear string, it went well
-        if return_val != "CMDAOKMLDP":
+        # check if a new-enough logger could not speed up
+        if self.fw_version >= "1.7.28" and return_val != "CMDAOKMLDP":
             raise LCBLEException('RN4020 did not speed up, restarting...')
+        elif self.fw_version < "1.7.28":
+            return_val = "assume_CMDAOKMLDP"
         return return_val
 
-    # write in BLE characteristic, used in command() ang list_/get_files()
+    # write in BLE characteristic, used in command() and list_/get_files()
     def write(self, data, response=False):
         for c in data:
             self.mldp_data.write(c.encode("utf-8"), withResponse=response)
 
     def list_files(self):
-        # 'DIR' command does not return "answer_tag" like command() does
+        # 'DIR' command does not "answer_tag" like command() does
         files = []
         self.delegate.buffer = ''
         self.delegate.read_buffer = []
