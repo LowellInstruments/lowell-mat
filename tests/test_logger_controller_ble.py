@@ -33,42 +33,28 @@ class FakeData:
         pass
 
 
-class FakeDataException:
-    def __init__(self, index):
-        self.valHandle = index
-
+class FakeDataException(FakeData):
     def write(self, data, withResponse=False):
         raise LCBLEException
 
 
 class FakeDataIndexable:
-    def __init__(self):
-        pass
-
     def __getitem__(self, index):
         return FakeData(index)
 
-class FakeDataIndexableException:
-    def __init__(self):
-        pass
 
+class FakeDataIndexableException(FakeDataIndexable):
     def __getitem__(self, index):
         return FakeDataException(index)
 
-class FakeService:
-    def __init__(self):
-        pass
 
+class FakeService:
     def getCharacteristics(self, charact):
-        pass
         return FakeDataIndexable()
 
-class FakeServiceException:
-    def __init__(self):
-        pass
 
+class FakeServiceException(FakeService):
     def getCharacteristics(self, charact):
-        pass
         return FakeDataIndexableException()
 
 
@@ -81,45 +67,29 @@ class FakeDelegateAscii:
         pass
 
 
-class FakePeripheral():
+class FakePeripheral:
     def __init__(self, mac_string):
-        pass
+        self.mac = mac_string
 
     def setDelegate(self, delegate_to_fxn):
         pass
 
-    def getServiceByUUID(self, uuid):
+    def writeCharacteristic(self, where, value):
         pass
+
+    def waitForNotifications(self, value):
+        return True
+
+    def disconnect(self):
+        pass
+
+    def getServiceByUUID(self, uuid):
         return FakeService()
 
-    def writeCharacteristic(self, where, value):
-        pass
 
-    def waitForNotifications(self, value):
-        return True
-
-    def disconnect(self):
-        pass
-
-class FakePeripheralException():
-    def __init__(self, mac_string):
-        pass
-
-    def setDelegate(self, delegate_to_fxn):
-        pass
-
+class FakePeripheralException(FakePeripheral):
     def getServiceByUUID(self, uuid):
-        pass
         return FakeServiceException()
-
-    def writeCharacteristic(self, where, value):
-        pass
-
-    def waitForNotifications(self, value):
-        return True
-
-    def disconnect(self):
-        pass
 
 
 class FakePeripheralCmdTimeout(FakePeripheral):
@@ -128,18 +98,6 @@ class FakePeripheralCmdTimeout(FakePeripheral):
 
 
 class TestLoggerControllerBLE(TestCase):
-
-    # test constructor, patch with stub class, FakePeripheral() gets called
-    @patch('bluepy.btle.Peripheral', FakePeripheral)
-    def test_lc_ble_constructor(self):
-        assert LoggerControllerBLE('ff:ff:ff:ff:ff:ff') is not None
-
-    # test mock usage, patch with mock class, MagicMock() gets called
-    @patch('bluepy.btle.Peripheral')
-    def test_mock_usage_success(self, my_mock):
-        LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-        LoggerControllerBLE('aa:bb:cc:dd:ee:ff')
-        assert my_mock.call_count == 2
 
     # test for receiving answers and results to commands()
     def test_handleNotification_ascii(self):
@@ -215,29 +173,29 @@ class TestLoggerControllerBLE(TestCase):
     def test_control_command_answer_ok(self):
         with _command_patch(True, 'CMDAOKMLDP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-            assert lc_ble.control_command('data_X', '1.8.68') is 'CMDAOKMLDP'
+            lc_ble.fw_version = '1.8.68'
+            assert lc_ble.control_command('data_X') is 'CMDAOKMLDP'
 
     # test for a control_command to RN4020 missing some parameter
-    def test_control_command_answer_no_fw_parameter(self):
+    def test_control_command_answer_no_fw(self):
         with _command_patch(True, 'CMDAOKMLDP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-            self.assertRaises(LCBLEException, lc_ble.control_command,
-                              'data_x', '')
+            lc_ble.fw_version = ''
+            self.assertRaises(LCBLEException, lc_ble.control_command, 'data_x')
 
     # test for a control_command to RN4020 with old firmware
     def test_control_command_answer_old_fw(self):
         with _command_patch_timeout():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
             lc_ble.fw_version = '1.7.27'
-            assert lc_ble.control_command('data_X', '1') is 'assume_CMDAOKMLDP'
+            assert lc_ble.control_command('data_X') is 'assume_CMDAOKMLDP'
 
     # test for a control_command to RN4020 with new fw which does not goes well
-    def test_control_command_answer_new_fw_but_error(self):
+    def test_control_command_answer_wrong(self):
         with _command_patch_timeout():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
             lc_ble.fw_version = '1.7.28'
-            self.assertRaises(LCBLEException, lc_ble.control_command,
-                              'data_x', '1.7.28')
+            self.assertRaises(LCBLEException, lc_ble.control_command, 'data_x')
 
     # test for writing characteristics, used by command(), must do nothing
     def test_write(self):
@@ -245,7 +203,7 @@ class TestLoggerControllerBLE(TestCase):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
             lc_ble.write('hello')
 
-    # test for the special command 'DIR' when logger answers wrongly
+    # test for the special command 'DIR' when logger answers wrong
     def test_list_files_answer_wrong(self):
         with _command_patch(True, 'file_with_no_size.fil'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
@@ -324,12 +282,6 @@ class TestLoggerControllerBLE(TestCase):
             lc_ble.delegate.sentC = True
             assert lc_ble.putc(b'\x06') == 1
 
-   # test for putc() function, xmodem mode, if raise Exception
-   #  def test_putc_exception(self):
-   #      with _write_char_exception_patch():
-   #          lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-   #          self.assertRaises(LCBLEException, lc_ble.putc, 'data')
-
     # test for putc() function, xmodem mode, if managed Exception
     def test_putc_exception_managed(self):
         with _write_char_exception_patch():
@@ -387,4 +339,4 @@ def _command_patch_timeout():
 @contextmanager
 def _write_char_exception_patch():
     with patch(peripheral_class, FakePeripheralException):
-            yield
+        yield

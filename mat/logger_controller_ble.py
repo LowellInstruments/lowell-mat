@@ -34,7 +34,7 @@ class Delegate(btle.DefaultDelegate):
 
         else:
             if not self.sentC:
-                # ascii tag_answer to 'GET' command
+                # this receives tag_answer to 'GET' command
                 self.buffer += data.decode('utf-8')
             else:
                 self.xmodem_buffer += data
@@ -97,7 +97,7 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 if inline.startswith(tag_waiting):
-                    # return all the answer an wait if needed
+                    # return all the answer and wait if needed
                     if tag in DELAY_COMMANDS:
                         time.sleep(2)
                     return inline
@@ -107,16 +107,16 @@ class LoggerControllerBLE(LoggerController):
                     raise LCBLEException('MAT-1W reported invalid command')
 
     # send commands to RN4020
-    def control_command(self, data, fw):
+    def control_command(self, data):
         self.delegate.buffer = ''
         self.delegate.read_buffer = []
         self.write('BTC 00' + data + chr(13))
 
         # check fw_version to control different behaviors
-        if fw == '':
+        if self.fw_version == '':
             raise LCBLEException('Need fw_version() prior control_command().')
 
-        # collect answer in 'return_val' until timeout
+        # new firmwares will reach this point
         last_rx = time.time()
         return_val = ''
         while time.time() - last_rx < 3:
@@ -125,14 +125,15 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 return_val += inline
-                # time for RN4020 to clear string, it went well
+                # time for RN4020 to clear string, it went ok
                 if return_val == 'CMDAOKMLDP':
                     time.sleep(2)
                     return 'CMDAOKMLDP'
 
-        # check if a new-enough logger could speed up
+        # old firmwares will reach this point
         if self.fw_version < '1.7.28':
             return 'assume_CMDAOKMLDP'
+        # check if a new-enough logger could speed up
         if self.fw_version >= '1.7.28' and return_val != 'CMDAOKMLDP':
             raise LCBLEException('RN4020 did not speed up, restarting...')
 
@@ -179,14 +180,15 @@ class LoggerControllerBLE(LoggerController):
             if len(self.delegate.xmodem_buffer) >= size:
                 data = self.delegate.xmodem_buffer[:size]
                 self.delegate.xmodem_buffer = self.delegate.xmodem_buffer[size:]
-                # print('1', end='', flush=True)
                 return data
         if len(self.delegate.xmodem_buffer):
+            # getc() timed out, but still some data in buffer < size
             data = self.delegate.xmodem_buffer
             self.delegate.xmodem_buffer = bytes()
             print('2', end='', flush=True)
             return data
         else:
+            # getc() timed out with nothing in buffer left
             print('3', end='', flush=True)
             return None
 
@@ -223,7 +225,7 @@ class LoggerControllerBLE(LoggerController):
         time_limit = time.time() + timeout
         while time.time() < time_limit:
             try:
-                # sending the triggering 'C' character in xmodem protocol
+                # sending the triggering 'C' character for xmodem protocol
                 if not self.delegate.sentC:
                     self.mldp_data.write(chr(67).encode('utf-8'),
                                          withResponse=True)
@@ -257,24 +259,20 @@ class LoggerControllerBLE(LoggerController):
                 raise LCBLEException('\'GET\' got timeout while answering.')
 
         # stage 2 of get_file() command: binary recv() a file
-        # recv(self, stream, crc_mode=1, retry=16, timeout=60, delay=1, quiet=0)
         self.delegate.xmodem_mode = True
         self.delegate.xmodem_buffer = bytes()
         self.delegate.sentC = False
         self.modem.recv(out_stream)
         self.delegate.xmodem_mode = False
 
-        # local filesystem stuff
+        # local filesystem stuff, check if valid size
         out_stream.seek(0, 2)
         if out_stream.tell() < size:
             raise XModemException('Xmodem, error: page < 1024 may be small.')
         out_stream.truncate(size)
 
-    def disconnect(self):
-        self.peripheral.disconnect()
-
     def close(self):
-        self.disconnect()
+        self.peripheral.disconnect()
         time.sleep(1)
         return 'ok'
 
