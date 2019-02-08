@@ -3,6 +3,7 @@ import time
 import re
 import xmodem
 from mat.logger_controller import LoggerController
+from mat.logger_controller import DELAY_COMMANDS
 
 
 class Delegate(btle.DefaultDelegate):
@@ -96,7 +97,9 @@ class LoggerControllerBLE(LoggerController):
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 if inline.startswith(tag_waiting):
-                    # return all the answer (ex: STS 0201)
+                    # return all the answer an wait if needed
+                    if tag in DELAY_COMMANDS:
+                        time.sleep(2)
                     return inline
                 elif inline.startswith('ERR'):
                     raise LCBLEException('MAT-1W returned ERR')
