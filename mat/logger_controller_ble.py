@@ -185,41 +185,10 @@ class LoggerControllerBLE(LoggerController):
             # getc() timed out, but still some data in buffer < size
             data = self.delegate.xmodem_buffer
             self.delegate.xmodem_buffer = bytes()
-            print('2', end='', flush=True)
             return data
         else:
             # getc() timed out with nothing in buffer left
-            print('3', end='', flush=True)
             return None
-
-    # def putc(self, data, timeout=1):
-    #     rv = False
-    #     if not self.delegate.sentC:
-    #         rv = self.mldp_data.write(chr(67).encode('utf-8'), withResponse=True)
-    #         self.delegate.sentC = True
-    #     else:
-    #         rv = self.mldp_data.write(data, withResponse=True)
-    #         if rv:
-    #             # print('4', end='', flush=True)
-    #             pass
-    #         else:
-    #             print('5'.format(rv), end='', flush=True)
-    #             # return None
-    #     return len(data)
-
-    # def putc(self, data, timeout=1):
-    #     try:
-    #         # sending the triggering 'C' character in xmodem protocol
-    #         if not self.delegate.sentC:
-    #             self.mldp_data.write(chr(67).encode('utf-8'), withResponse=True)
-    #             self.delegate.sentC = True
-    #         # sending normal binary data
-    #         else:
-    #             self.mldp_data.write(data, withResponse=True)
-    #     except LCBLEException:
-    #         raise LCBLEException
-    #     else:
-    #         return len(data)
 
     def putc(self, data, timeout=1):
         time_limit = time.time() + timeout
