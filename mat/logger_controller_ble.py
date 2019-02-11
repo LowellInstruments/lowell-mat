@@ -209,6 +209,11 @@ class LoggerControllerBLE(LoggerController):
         return 0
 
     def get_file(self, filename, size, out_stream):
+        self._get_file_ascii_stage(self, filename)
+        self._get_file_xmodem_stage(self, filename, size, out_stream)
+
+
+    def get_file_ascii_stage(self, filename):
         # stage 1 of get_file() command: ascii 'GET' file name
         self.delegate.buffer = ''
         self.delegate.read_buffer = []
@@ -227,6 +232,8 @@ class LoggerControllerBLE(LoggerController):
             if time.time() - last_rx > 2:
                 raise LCBLEException('\'GET\' got timeout while answering.')
 
+
+    def get_file_xmodem_stage(self, size, out_stream):
         # stage 2 of get_file() command: binary recv() a file
         self.delegate.xmodem_mode = True
         self.delegate.xmodem_buffer = bytes()
