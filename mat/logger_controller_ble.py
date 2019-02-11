@@ -223,14 +223,12 @@ class LoggerControllerBLE(LoggerController):
 
         # GET answer 'GET 00', comes bit late! we do as in command()
         last_rx = time.time()
-        while True:
+        while time.time() - last_rx < 2:
             self.peripheral.waitForNotifications(0.05)
             if self.delegate.in_waiting:
-                get_ans = self.delegate.read_line()
-                if get_ans == 'GET 00':
-                    break
-            if time.time() - last_rx > 2:
-                raise LCBLEException('\'GET\' got timeout while answering.')
+                if self.delegate.read_line() == 'GET 00':
+                    return
+        raise LCBLEException('\'GET\' got timeout while answering.')
 
 
     def get_file_xmodem_stage(self, size, out_stream):
