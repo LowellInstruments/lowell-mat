@@ -108,3 +108,6 @@ venv.bak/
 
 # Emacs
 *~
+
+# local Code Climate CLI analysis:
+codeclimate-master/
