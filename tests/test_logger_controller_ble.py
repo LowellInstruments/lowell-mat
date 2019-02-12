@@ -133,11 +133,26 @@ class TestLoggerControllerBLE(TestCase):
         assert ''.join(d.read_line()) == 'any_ascii_string'
 
     # test for open method
-    def test_open_close(self):
+    def test_open(self):
         with _peripheral_patch():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
             lc_ble.open()
-            assert lc_ble.close() == 'ok'
+            assert lc_ble.peripheral
+
+    # test for close method
+    def test_close_ok(self):
+        with _peripheral_patch():
+            lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
+            assert lc_ble.close()
+
+    # test for close method
+    def test_close_not_ok(self):
+        with _peripheral_patch():
+            lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.peripheral = None
+            assert not lc_ble.close()
+
 
     # test for a command which requires no answer
     def test_command_no_answer_required(self):
@@ -153,9 +168,9 @@ class TestLoggerControllerBLE(TestCase):
 
     # test for a command which performs perfectly
     def test_command_answer_ok(self):
-        with _command_patch(True, 'STS'):
+        with _command_patch(True, 'STP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-            assert lc_ble.command('STS') is 'STS'
+            assert lc_ble.command('STP') is 'STP'
 
     # test for exception when logger answering 'INV' to a command
     def test_command_answer_inv(self):
