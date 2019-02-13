@@ -276,7 +276,8 @@ class LoggerControllerBLE(LoggerController):
         self.delegate.xmodem_mode = True
         self.delegate.xmodem_buffer = bytes()
         self.delegate.sentC = False
-        self.modem.recv(out_stream)
+        # quiet=1 avoids displaying 'error: expected SOH; got b'%'' messages
+        self.modem.recv(out_stream, quiet=1)
         self.delegate.xmodem_mode = False
 
         # local filesystem stuff, check if valid size
