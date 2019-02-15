@@ -153,7 +153,6 @@ class TestLoggerControllerBLE(TestCase):
             lc_ble.peripheral = None
             assert not lc_ble.close()
 
-
     # test for a command which requires no answer
     def test_command_no_answer_required(self):
         with _command_patch(None, ''):
@@ -170,7 +169,7 @@ class TestLoggerControllerBLE(TestCase):
     def test_command_answer_ok(self):
         with _command_patch(True, 'STP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-            assert lc_ble.command('STP') is 'STP'
+            assert lc_ble.command('STP') == 'STP'
 
     # test for exception when logger answering 'INV' to a command
     def test_command_answer_inv(self):
@@ -189,7 +188,7 @@ class TestLoggerControllerBLE(TestCase):
         with _command_patch(True, 'CMDAOKMLDP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
             lc_ble.fw_version = '1.8.68'
-            assert lc_ble.control_command('data_X') is 'CMDAOKMLDP'
+            assert lc_ble.control_command('data_X') == 'CMDAOKMLDP'
 
     # test for a control_command to RN4020 missing some parameter
     def test_control_command_answer_no_fw(self):
@@ -203,7 +202,7 @@ class TestLoggerControllerBLE(TestCase):
         with _command_patch_timeout():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
             lc_ble.fw_version = '1.7.27'
-            assert lc_ble.control_command('data_X') is 'assume_CMDAOKMLDP'
+            assert lc_ble.control_command('data_X') == 'assume_CMDAOKMLDP'
 
     # test for a control_command to RN4020 with new fw which does not goes well
     def test_control_command_answer_wrong(self):

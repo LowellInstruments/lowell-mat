@@ -104,7 +104,7 @@ class LoggerControllerBLE(LoggerController):
     def _command_answer(self, tag, tag_waiting):
         # analyze line collected by handleNotification(), if any
         while True:
-            # one notification w/ one byte makes waitForNotifications() continue
+            # one notification w/ 1 byte makes waitForNotifications() continue
             if not self.peripheral.waitForNotifications(5):
                 raise LCBLEException('\tAnswer timeout at ' + tag_waiting)
             if self.delegate.in_waiting:
@@ -267,7 +267,7 @@ class LoggerControllerBLE(LoggerController):
         while time.time() - last_rx < 2:
             self.peripheral.waitForNotifications(0.05)
             if self.delegate.in_waiting\
-                and self.delegate.read_line() == 'GET 00':
+                    and self.delegate.read_line() == 'GET 00':
                 return True
         raise LCBLEException('\'GET\' got timeout while answering.')
 
