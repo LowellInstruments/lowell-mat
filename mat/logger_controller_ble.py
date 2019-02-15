@@ -204,7 +204,7 @@ class LoggerControllerBLE(LoggerController):
 
     def _extract_file_name_n_size(self, file_str):
         # Find all printable characters
-        re_obj = re.search('([\x20-\x7E]+)\t+([0-9]*)', file_str)
+        re_obj = re.search(r'([\x20-\x7E]+)\t+(\d*)', file_str)
         try:
             file_name = re_obj.group(1)
             file_size = int(re_obj.group(2))
