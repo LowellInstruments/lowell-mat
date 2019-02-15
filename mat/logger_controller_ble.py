@@ -204,7 +204,7 @@ class LoggerControllerBLE(LoggerController):
 
     def _extract_file_name_n_size(self, file_str):
         # Find all printable characters
-        re_obj = re.search('([\x20-\x7E]+)\t+(\d*)', file_str)
+        re_obj = re.search('([\x20-\x7E]+)\t+([0-9]*)', file_str)
         try:
             file_name = re_obj.group(1)
             file_size = int(re_obj.group(2))
@@ -219,7 +219,8 @@ class LoggerControllerBLE(LoggerController):
             self.peripheral.waitForNotifications(0.05)
             if len(self.delegate.xmodem_buffer) >= size:
                 data = self.delegate.xmodem_buffer[:size]
-                self.delegate.xmodem_buffer = self.delegate.xmodem_buffer[size:]
+                remaining = self.delegate.xmodem_buffer[size:]
+                self.delegate.xmodem_buffer = remaining
                 return data
         if len(self.delegate.xmodem_buffer):
             # getc() timed out, but still some data in buffer < size
