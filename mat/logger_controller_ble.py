@@ -230,7 +230,7 @@ class LoggerControllerBLE(LoggerController):
             # getc() timed out with nothing left in buffer
             return None
 
-    def putc(self, data, timeout=1):
+    def putc(self, data, timeout=2):
         time_limit = time.time() + timeout
         while time.time() < time_limit:
             try:
