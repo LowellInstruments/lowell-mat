@@ -231,7 +231,7 @@ class LoggerControllerBLE(LoggerController):
             # getc() timed out with nothing left in buffer
             return None
 
-    def putc(self, data, timeout=2):
+    def putc(self, data, timeout=1):
         time_limit = time.time() + timeout
         while time.time() < time_limit:
             try:
@@ -251,22 +251,9 @@ class LoggerControllerBLE(LoggerController):
         else:
             self.mldp_data.write(data, withResponse=True)
 
-    # def get_file(self, filename, size, out_stream):
-    #     self._get_file_ascii_phase(filename)
-    #     self._get_file_xmodem_phase(size, out_stream)
-
     def get_file(self, filename, size, out_stream):
-        retries_allowed_per_file = 3
-        while retries_allowed_per_file:
-            self._get_file_ascii_phase(filename)
-            rv = self._get_file_xmodem_phase(size, out_stream)
-            if rv:
-                return True
-            else:
-                print('... download retry.')
-                retries_allowed_per_file -= 1
-                time.sleep(1)
-        raise XModemException('Xmodem, error: page < 1024 may be small.')
+        self._get_file_ascii_phase(filename)
+        self._get_file_xmodem_phase(size, out_stream)
 
     def _get_file_ascii_phase(self, filename):
         # phase 1 of get_file() command: ascii 'GET' file name
@@ -285,21 +272,6 @@ class LoggerControllerBLE(LoggerController):
                 return True
         raise LCBLEException('\'GET\' got timeout while answering.')
 
-    # def _get_file_xmodem_phase(self, size, out_stream):
-    #     # phase 2 of get_file() command: binary recv() a file
-    #     self.delegate.xmodem_mode = True
-    #     self.delegate.xmodem_buffer = bytes()
-    #     self.delegate.sentC = False
-    #     # quiet=1 avoids displaying 'error: expected SOH; got b'%'' messages
-    #     self.modem.recv(out_stream, quiet=1)
-    #     self.delegate.xmodem_mode = False
-    #
-    #     # local filesystem stuff, check if valid size
-    #     out_stream.seek(0, 2)
-    #     if out_stream.tell() < size:
-    #         raise XModemException('Xmodem, error: page < 1024 may be small.')
-    #     out_stream.truncate(size)
-
     def _get_file_xmodem_phase(self, size, out_stream):
         # phase 2 of get_file() command: binary recv() a file
         self.delegate.xmodem_mode = True
@@ -312,9 +284,8 @@ class LoggerControllerBLE(LoggerController):
         # local filesystem stuff, check if valid size
         out_stream.seek(0, 2)
         if out_stream.tell() < size:
-            return False
+            raise XModemException('Xmodem, error: page < 1024 may be small.')
         out_stream.truncate(size)
-        return True
 
     def close(self):
         try:
