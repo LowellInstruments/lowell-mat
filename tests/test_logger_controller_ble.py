@@ -68,8 +68,11 @@ class FakeDelegateAscii:
 
 
 class FakePeripheral:
-    def __init__(self, mac_string):
-        self.mac = mac_string
+    def __init__(self):
+        pass
+
+    def connect(self, mac):
+        self.mac = mac
 
     def setDelegate(self, delegate_to_fxn):
         pass
@@ -110,7 +113,7 @@ class TestLoggerControllerBLE(TestCase):
     def test_handleNotification_xmodem_not_sentC(self):
         d = Delegate()
         d.xmodem_mode = True
-        d.sentC = False
+        d.sent_capital_c_symbol = False
         d.handleNotification(None, b'\n\rGET 00\r\n')
         assert len(d.buffer) == 10
 
@@ -118,7 +121,7 @@ class TestLoggerControllerBLE(TestCase):
     def test_handleNotification_xmodem_yes_sentC(self):
         d = Delegate()
         d.xmodem_mode = True
-        d.sentC = True
+        d.sent_capital_c_symbol = True
         d.handleNotification(None, b'\x02\x01\xfe\x00\xff')
         assert len(d.xmodem_buffer) == 5
 
@@ -157,82 +160,102 @@ class TestLoggerControllerBLE(TestCase):
     def test_command_no_answer_required(self):
         with _command_patch(None, ''):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             assert lc_ble.command('sleep', None) is None
 
     # test for a command which requires answer but timeouts
     def test_command_timeout(self):
         with _command_patch_timeout():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             self.assertRaises(LCBLEException, lc_ble.command, 'STS', None)
 
     # test for a command which performs perfectly
     def test_command_answer_ok(self):
         with _command_patch(True, 'STP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             assert lc_ble.command('STP') == 'STP'
 
     # test for exception when logger answering 'INV' to a command
     def test_command_answer_inv(self):
         with _command_patch(True, 'INV'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             self.assertRaises(LCBLEException, lc_ble.command, 'STS')
 
     # test for exception when logger answering 'ERR' to a command
     def test_command_answer_err(self):
         with _command_patch(True, 'ERR'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
+            self.assertRaises(LCBLEException, lc_ble.command, 'STS')
+
+    # test for exception when logger answers something unexpected to a command
+    def test_command_answer_unexpected(self):
+        with _command_patch(True, 'XXX'):
+            lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             self.assertRaises(LCBLEException, lc_ble.command, 'STS')
 
     # test for a control_command to RN4020 which performs perfectly
     def test_control_command_answer_ok(self):
         with _command_patch(True, 'CMDAOKMLDP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             lc_ble.fw_version = '1.8.68'
-            assert lc_ble.control_command('data_X') == 'CMDAOKMLDP'
+            assert lc_ble.control_command_send('data_X') == 'CMDAOKMLDP'
 
     # test for a control_command to RN4020 missing some parameter
     def test_control_command_answer_no_fw(self):
         with _command_patch(True, 'CMDAOKMLDP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             lc_ble.fw_version = ''
-            self.assertRaises(LCBLEException, lc_ble.control_command, 'data_x')
+            self.assertRaises(LCBLEException, lc_ble.control_command_send, 'data_x')
 
     # test for a control_command to RN4020 with old firmware
     def test_control_command_answer_old_fw(self):
         with _command_patch_timeout():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             lc_ble.fw_version = '1.7.27'
-            assert lc_ble.control_command('data_X') == 'assume_CMDAOKMLDP'
+            assert lc_ble.control_command_send('data_X') == 'assume_CMDAOKMLDP'
 
     # test for a control_command to RN4020 with new fw which does not goes well
     def test_control_command_answer_wrong(self):
         with _command_patch_timeout():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             lc_ble.fw_version = '1.7.28'
-            self.assertRaises(LCBLEException, lc_ble.control_command, 'data_x')
+            self.assertRaises(LCBLEException, lc_ble.control_command_send, 'data_x')
 
     # test for writing characteristics, used by command(), must do nothing
     def test_write(self):
         with _peripheral_patch():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             lc_ble.write('hello')
 
     # test for the special command 'DIR' when logger answers wrong
     def test_list_files_answer_wrong(self):
         with _command_patch(True, 'file_with_no_size.fil'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             self.assertRaises(LCBLEException, lc_ble.list_files)
 
     # test for command 'DIR' when logger answers timeouts
     def test_list_files_answer_timeout(self):
         with _command_patch_timeout():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             self.assertRaises(LCBLEException, lc_ble.list_files)
 
     # test for command 'DIR' when logger answers perfectly but empty list
     def test_list_files_answer_empty(self):
         with _command_patch(True, '\x04'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             assert lc_ble.list_files() == []
 
     # test for command 'DIR' when logger answers a populated file list
@@ -240,18 +263,21 @@ class TestLoggerControllerBLE(TestCase):
         rl_answers = Mock(side_effect=['one.h\t12', 'two.dat\t2345', '\x04'])
         with _command_patch_dir(True, rl_answers):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             assert lc_ble.list_files() == [('one.h', 12), ('two.dat', 2345)]
 
     # test for command 'GET' when logger sends a file correctly
     def test_get_files_answer_ok(self):
         with _command_patch_get(True, 'GET 00'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             assert lc_ble.get_file('want_file', 12345, FakeOutStream()) is None
 
     # test for command 'GET' when logger timeouts while sending
     def test_get_files_answer_timeout(self):
         with _command_patch_get(False, None):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             self.assertRaises(LCBLEException, lc_ble.get_file,
                               'want_file', 12345, FakeOutStream())
 
@@ -259,6 +285,7 @@ class TestLoggerControllerBLE(TestCase):
     def test_get_files_answer_too_small(self):
         with _command_patch_get(True, 'GET 00'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             self.assertRaises(XModemException, lc_ble.get_file,
                               'want_file', 12345, FakeOutStreamTellIsWrong())
 
@@ -266,6 +293,7 @@ class TestLoggerControllerBLE(TestCase):
     def test_getc(self):
         with _peripheral_patch():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             lc_ble.delegate.xmodem_buffer = b'\x02\x01\xfe'
             assert lc_ble.getc(2) == b'\x02\x01'
 
@@ -273,6 +301,7 @@ class TestLoggerControllerBLE(TestCase):
     def test_getc_timeout_bytes_left(self):
         with _peripheral_patch():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             lc_ble.delegate.xmodem_buffer = b'\x02\x01\xfe'
             assert lc_ble.getc(2, timeout=0) == b'\x02\x01\xfe'
 
@@ -280,27 +309,24 @@ class TestLoggerControllerBLE(TestCase):
     def test_getc_timeout_no_bytes_left(self):
         with _peripheral_patch():
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
+            lc_ble.open()
             assert lc_ble.getc(2, timeout=0) is None
 
     # test for putc() function, ascii mode, sent 'C'
     def test_putc_not_sentC(self):
         with _command_patch(None, None):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-            lc_ble.delegate.sentC = False
+            lc_ble.open()
+            lc_ble.delegate.sent_capital_c_symbol = False
             assert lc_ble.putc('C') == 1
 
     # test for putc() function, xmodem mode, sent data
     def test_putc_yes_sentC(self):
         with _command_patch(None, None):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-            lc_ble.delegate.sentC = True
+            lc_ble.open()
+            lc_ble.delegate.sent_capital_c_symbol = True
             assert lc_ble.putc(b'\x06') == 1
-
-    # test for putc() function, xmodem mode, if managed Exception
-    def test_putc_exception_managed(self):
-        with _write_char_exception_patch():
-            lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
-            assert lc_ble.putc(b'\x06') == 0
 
 
 # vars useful for context managers

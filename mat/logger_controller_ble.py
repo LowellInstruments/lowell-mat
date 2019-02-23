@@ -13,8 +13,7 @@ class Delegate(btle.DefaultDelegate):
         self.read_buffer = []
         self.xmodem_buffer = bytes()
         self.xmodem_mode = False
-        self.rx_observers = []
-        self.sentC = False
+        self.sent_capital_c_symbol = False
 
     def handleNotification(self, handler, data):
         # notification arrives while in ascii mode
@@ -24,7 +23,7 @@ class Delegate(btle.DefaultDelegate):
             self._notifications_ascii_mode_to_buffers()
         # notification arrives while in xmodem mode
         else:
-            if not self.sentC:
+            if not self.sent_capital_c_symbol:
                 # this receives tag_answer to 'GET' command
                 self.buffer += data.decode('utf-8')
             else:
@@ -58,72 +57,84 @@ class Delegate(btle.DefaultDelegate):
 class LoggerControllerBLE(LoggerController):
     def __init__(self, mac):
         super(LoggerController, self).__init__()
+        self.peripheral = btle.Peripheral()
+        self.peripheral_mac = mac
+
+    def open(self):
         # after ble_connect, 1 second delay required at RN4020
-        self.peripheral = btle.Peripheral(mac)
+        self.peripheral.connect(self.peripheral_mac)
         time.sleep(1)
         self.delegate = Delegate()
         self.peripheral.setDelegate(self.delegate)
-        uuid_serv = '00035b03-58e6-07dd-021a-08123a000300'
-        uuid_char = '00035b03-58e6-07dd-021a-08123a000301'
-        self.mldp_service = self.peripheral.getServiceByUUID(uuid_serv)
-        self.mldp_data = self.mldp_service.getCharacteristics(uuid_char)[0]
-        cccd = self.mldp_data.valHandle + 1
-        self.peripheral.writeCharacteristic(cccd, b'\x01\x00')
+        UUID_SERV = '00035b03-58e6-07dd-021a-08123a000300'
+        UUID_CHAR = '00035b03-58e6-07dd-021a-08123a000301'
+        self.mldp_service = self.peripheral.getServiceByUUID(UUID_SERV)
+        self.mldp_data = self.mldp_service.getCharacteristics(UUID_CHAR)[0]
+        CCCD = self.mldp_data.valHandle + 1
+        self.peripheral.writeCharacteristic(CCCD, b'\x01\x00')
         self.modem = xmodem.XMODEM(self.getc, self.putc)
         # feel free to change logging level, default is 30
         self.modem.log.setLevel(50)
         self.modem.log.disabled = True
         self.fw_version = ''
 
-    def open(self):
-        pass
+    def command(self, *args):
+        # same interface as, for example, logger_controller_usb
+        tag = args[0]
+        data = None
+        if len(args) == 2:
+            data = str(args[1])
+        tag_waiting = self._command_send(tag, data)
 
-    def command(self, tag, data=None):
-        rv_tag_waiting = self._command_build(tag, data)
-        if rv_tag_waiting == '':
+        # the command sent expects no answer back
+        if tag_waiting == '':
             return None
-        return self._command_answer(tag, rv_tag_waiting)
 
-    def _command_build(self, tag, data):
+        # the command sent expects answer back
+        answer = self._command_answer(tag_waiting)
+        if tag in DELAY_COMMANDS:
+            time.sleep(2)
+        return answer
+
+    def _command_send(self, tag, data):
         # build and send the command
         self.delegate.buffer = ''
         self.delegate.read_buffer = []
         data = '' if data is None else data
-        length = '%02x' % len(data)
+        length = '{:02x}'.format(len(data))
         if tag == 'sleep' or tag == 'RFN':
             self.write(tag + chr(13))
         else:
             self.write(tag + ' ' + length + data + chr(13))
 
         # expect answer? not for RST, BSL and sleep commands
-        tag_waiting = tag
-        if tag == 'RST' or tag == 'sleep' or tag == 'BSL':
-            tag_waiting = ''
-        return tag_waiting
+        if tag in ['RST', 'sleep', 'BSL']:
+            return ''
+        return tag
 
-    def _command_answer(self, tag, tag_waiting):
+    def _command_answer(self, tag_waiting):
         # analyze line collected by handleNotification(), if any
         while True:
             # one notification w/ 1 byte makes waitForNotifications() continue
             if not self.peripheral.waitForNotifications(5):
                 raise LCBLEException('\tAnswer timeout at ' + tag_waiting)
             if self.delegate.in_waiting:
-                return self._command_answer_analyze(tag, tag_waiting)
+                return self._command_answer_analyze(tag_waiting)
 
-    def _command_answer_analyze(self, tag, tag_waiting):
+    def _command_answer_analyze(self, tag_waiting):
         inline = self.delegate.read_line()
         if inline.startswith(tag_waiting):
-            # return command answer, wait previously if needed
-            if tag in DELAY_COMMANDS:
-                time.sleep(2)
             return inline
         elif inline.startswith('ERR'):
             raise LCBLEException('MAT-1W returned ERR')
         elif inline.startswith('INV'):
             raise LCBLEException('MAT-1W reported invalid command')
+        else:
+            raise LCBLEException('MAT-1W returned unexpected {}'.format(inline))
+
 
     # send commands directly to RN4020 BLE module
-    def control_command(self, data):
+    def control_command_send(self, data):
         self.delegate.buffer = ''
         self.delegate.read_buffer = []
         self.write('BTC 00' + data + chr(13))
@@ -144,25 +155,17 @@ class LoggerControllerBLE(LoggerController):
 
         # order is important: old firmwares will reach this point
         if self.fw_version < '1.7.28':
+            time.sleep(2)
             return 'assume_CMDAOKMLDP'
         # check if a new-enough logger could not speed up
         if self.fw_version >= '1.7.28' and return_val != 'CMDAOKMLDP':
             raise LCBLEException('RN4020 did not speed up, restarting...')
 
     def _control_command_analyze(self):
-        # last_rx = time.time()
-        # answer = ''
-        # while time.time() - last_rx < 3:
-        #     self.peripheral.waitForNotifications(0.05)
-        #     if self.delegate.in_waiting:
-        #         inline = self.delegate.read_line()
-        #         answer += inline
-        #         if answer == 'CMDAOKMLDP':
-        #             return True
         last_rx = time.time()
         answer = ''
         while time.time() - last_rx < 3:
-            self.peripheral.waitForNotifications(0.05)
+            self.peripheral.waitForNotifications(0.5)
             if self.delegate.in_waiting:
                 inline = self.delegate.read_line()
                 answer += inline
@@ -183,7 +186,7 @@ class LoggerControllerBLE(LoggerController):
         files_back = []
         time_limit = time.time() + 5
         while time.time() < time_limit:
-            self.peripheral.waitForNotifications(0.05)
+            self.peripheral.waitForNotifications(0.01)
             end = False
             if self.delegate.in_waiting:
                 end = self._collect_dir_files_or_end(files_back)
@@ -216,7 +219,7 @@ class LoggerControllerBLE(LoggerController):
     def getc(self, size, timeout=2):
         time_limit = time.time() + timeout
         while time.time() < time_limit:
-            self.peripheral.waitForNotifications(0.05)
+            self.peripheral.waitForNotifications(0.005)
             if len(self.delegate.xmodem_buffer) >= size:
                 data = self.delegate.xmodem_buffer[:size]
                 remaining = self.delegate.xmodem_buffer[size:]
@@ -231,25 +234,29 @@ class LoggerControllerBLE(LoggerController):
             # getc() timed out with nothing left in buffer
             return None
 
-    def putc(self, data, timeout=1):
-        time_limit = time.time() + timeout
-        while time.time() < time_limit:
-            try:
-                self._putc_C_or_data(data)
-            except LCBLEException:
-                time.sleep(0.1)
-            else:
-                return len(data)
-        return 0
+    # def putc(self, data, timeout=1):
+    #     time_limit = time.time() + timeout
+    #     while time.time() < time_limit:
+    #         try:
+    #             self._putc_C_or_data(data)
+    #         except LCBLEException:
+    #             time.sleep(0.1)
+    #         else:
+    #             return len(data)
+    #     return 0
+
+    def putc(self, data, timeout=0):
+        self._putc_C_or_data(data)
+        return len(data)
 
     def _putc_C_or_data(self, data):
         # sending the triggering 'C' character for xmodem protocol
-        if not self.delegate.sentC:
-            self.mldp_data.write(chr(67).encode('utf-8'), withResponse=True)
-            self.delegate.sentC = True
+        if not self.delegate.sent_capital_c_symbol:
+            self.mldp_data.write(chr(67).encode('utf-8'))
+            self.delegate.sent_capital_c_symbol = True
         # sending normal binary data
         else:
-            self.mldp_data.write(data, withResponse=True)
+            self.mldp_data.write(data)
 
     def get_file(self, filename, size, out_stream):
         self._get_file_ascii_phase(filename)
@@ -265,7 +272,7 @@ class LoggerControllerBLE(LoggerController):
 
         # GET answer 'GET 00', comes bit late! we do as in command()
         last_rx = time.time()
-        while time.time() - last_rx < 2:
+        while time.time() - last_rx < 3:
             self.peripheral.waitForNotifications(0.05)
             if self.delegate.in_waiting\
                     and self.delegate.read_line() == 'GET 00':
@@ -276,7 +283,7 @@ class LoggerControllerBLE(LoggerController):
         # phase 2 of get_file() command: binary recv() a file
         self.delegate.xmodem_mode = True
         self.delegate.xmodem_buffer = bytes()
-        self.delegate.sentC = False
+        self.delegate.sent_capital_c_symbol = False
         # quiet=1 avoids displaying 'error: expected SOH; got b'%'' messages
         self.modem.recv(out_stream, quiet=1)
         self.delegate.xmodem_mode = False
