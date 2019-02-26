@@ -285,6 +285,8 @@ class LoggerControllerBLE(LoggerController):
         self.delegate.xmodem_buffer = bytes()
         self.delegate.sent_capital_c_symbol = False
         # quiet=1 avoids displaying 'error: expected SOH; got b'%'' messages
+        # todo: maybe timeout faster at recv()
+        # self.modem.recv(out_stream, quiet=1, timeout=10)
         self.modem.recv(out_stream, quiet=1)
         self.delegate.xmodem_mode = False
 
