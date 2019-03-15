@@ -160,8 +160,9 @@ class LoggerController(ABC):
         self.close()
 
     def check_time(self):
-        logger_time = datetime.strptime(self.command(TIME_CMD),
-                                        '%Y/%m/%d %H:%M:%S')
+        logger_time = self.command(TIME_CMD)
+        logger_time = logger_time[6:]
+        logger_time = datetime.strptime(logger_time, '%Y/%m/%d %H:%M:%S')
         local_time = datetime.now()
         return (local_time - logger_time).total_seconds()
 

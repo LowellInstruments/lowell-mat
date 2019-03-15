@@ -175,7 +175,7 @@ class TestLoggerControllerBLE(TestCase):
         with _command_patch(True, b'STP'):
             lc_ble = LoggerControllerBLE('ff:ff:ff:ff:ff:ff')
             lc_ble.open()
-            assert lc_ble.command('STP') == b'STP'
+            assert lc_ble.command('STP') == 'STP'
 
     # test for exception when logger answering 'INV' to a command
     def test_command_answer_inv(self):

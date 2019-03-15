@@ -30,7 +30,7 @@ class Delegate(btle.DefaultDelegate):
         self.buffer = self.buffer.replace(b'\n', b'')
         self._handle_notifications_ascii_mode_extract_buffer()
 
-    # extract data from ascii buffer
+    # extract data from ascii buffer, put it in queue
     def _handle_notifications_ascii_mode_extract_buffer(self):
         while b'\r' in self.buffer:
             # make sure ascii received doesn't start with CR
@@ -48,7 +48,7 @@ class Delegate(btle.DefaultDelegate):
     def in_waiting(self):
         return True if self.xmodem_mode or self.read_buffer else False
 
-    # obtain single line from ascii buffer, complements append() above
+    # obtain single line from ascii queue, complements append() above
     def read_line(self):
         if not self.read_buffer:
             raise IndexError('Read buffer is empty')
@@ -108,7 +108,7 @@ class LoggerControllerBLE(LoggerController):
             return None
 
         # answer: commands that do
-        return self._command_result(tag)
+        return self._command_result(tag).decode()
 
     # see command result
     def _command_result(self, tag):
