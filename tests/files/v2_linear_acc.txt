@@ -1,0 +1,19 @@
+// Old accelerometer and magnetometer calibration coefficients
+RVN 2
+TMO 0
+TMR 10000
+TMA 0.0011238100354
+TMB 0.0002349457073
+TMC 0.0000000848361
+AXA 0
+AXB 1024
+AYA 0
+AYB 1024
+AZA 0
+AZB 1024
+MXA 0
+MYA 0
+MZA 0
+MXS 1
+MYS 1
+MZS 1
