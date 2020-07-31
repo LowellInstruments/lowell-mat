@@ -240,8 +240,7 @@ def _ls_not_lid_build(lis):
 
 
 def brand_ti(mac):
-    mac = mac.lower()
-    return mac.startswith('80:6f:b0:') or mac.startswith('04:ee:03:')
+    return not brand_microchip(mac)
 
 
 def brand_microchip(mac):
