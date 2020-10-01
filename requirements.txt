@@ -1,0 +1,11 @@
+ipython
+pycodestyle
+flake8
+mock
+pytest
+# pytest-cov
+numpy
+pyserial
+pytest-mock
+crc16
+h5py
